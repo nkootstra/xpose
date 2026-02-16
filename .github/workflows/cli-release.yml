@@ -1,0 +1,39 @@
+name: CLI Release
+
+on:
+  push:
+    tags:
+      - "cli/v*"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: apps/cli-go
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/cli-go/go.mod
+          cache-dependency-path: apps/cli-go/go.sum
+
+      - name: Run tests
+        run: go test -v -race -count=1 ./...
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+          workdir: apps/cli-go
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

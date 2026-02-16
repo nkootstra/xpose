@@ -1,0 +1,28 @@
+{
+  "name": "@xpose/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "xpose": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@xpose/protocol": "workspace:*",
+    "citty": "^0.1.6",
+    "nanoid": "^5.1.5",
+    "picocolors": "^1.1.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.14",
+    "tsup": "^8.4.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.0"
+  }
+}

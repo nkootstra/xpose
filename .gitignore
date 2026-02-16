@@ -33,6 +33,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Cloudflare
+.wrangler
+.dev.vars
+
+# Go
+apps/cli-go/bin/
+dist/
+
 # Misc
 .DS_Store
 *.pem
