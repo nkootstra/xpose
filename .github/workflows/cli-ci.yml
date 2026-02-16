@@ -44,6 +44,8 @@ jobs:
       - uses: golangci/golangci-lint-action@v6
         with:
           working-directory: apps/cli-go
+          install-mode: goinstall
+          version: latest
 
   build:
     name: Build

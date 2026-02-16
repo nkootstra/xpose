@@ -407,7 +407,9 @@ func (c *Client) handleHTTPRequest(ctx context.Context, conn *websocket.Conn, ms
 			})
 
 			frame := protocol.EncodeBinaryFrame(msg.ID, chunk)
-			conn.Write(ctx, websocket.MessageBinary, frame)
+			if err := conn.Write(ctx, websocket.MessageBinary, frame); err != nil {
+				return
+			}
 		}
 	}
 
@@ -435,7 +437,9 @@ func (c *Client) sendJSON(ctx context.Context, conn *websocket.Conn, msg any) {
 	if err != nil {
 		return
 	}
-	conn.Write(ctx, websocket.MessageText, data)
+	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+		return
+	}
 }
 
 func (c *Client) scheduleReconnect() {
@@ -479,7 +483,7 @@ func concatChunks(chunks [][]byte) []byte {
 }
 
 func caseInsensitiveGet(headers map[string]string, name string) (string, bool) {
-	target := fmt.Sprintf("%s", name)
+	target := name
 	for key, value := range headers {
 		if len(key) == len(target) {
 			match := true

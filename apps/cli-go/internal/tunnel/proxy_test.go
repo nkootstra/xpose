@@ -16,7 +16,9 @@ func parseHostPort(url string) (string, int) {
 	// url is like http://127.0.0.1:PORT
 	parts := strings.Split(url, ":")
 	port := 0
-	fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+	if _, err := fmt.Sscanf(parts[len(parts)-1], "%d", &port); err != nil {
+		return "", 0
+	}
 	host := strings.TrimPrefix(strings.Join(parts[:len(parts)-1], ":"), "http://")
 	return host, port
 }
@@ -27,7 +29,9 @@ func TestProxyRequest_Success(t *testing.T) {
 		assert.Equal(t, "GET", r.Method)
 		w.Header().Set("X-Custom", "value")
 		w.WriteHeader(200)
-		w.Write([]byte("hello world"))
+		if _, err := w.Write([]byte("hello world")); err != nil {
+			t.Errorf("failed to write response body: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -52,7 +56,9 @@ func TestProxyRequest_PostWithBody(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 		body := make([]byte, 1024)
 		n, _ := r.Body.Read(body)
-		w.Write(body[:n])
+		if _, err := w.Write(body[:n]); err != nil {
+			t.Errorf("failed to write response body: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -88,7 +94,9 @@ func TestProxyRequest_ConnectionRefused(t *testing.T) {
 func TestProxyRequest_OversizedResponse(t *testing.T) {
 	bigBody := strings.Repeat("x", 1024)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(bigBody))
+		if _, err := w.Write([]byte(bigBody)); err != nil {
+			t.Errorf("failed to write oversized response body: %v", err)
+		}
 	}))
 	defer server.Close()
 

@@ -26,7 +26,11 @@ func mockTunnelServer(t *testing.T, handler func(ctx context.Context, conn *webs
 			t.Logf("websocket accept error: %v", err)
 			return
 		}
-		defer conn.CloseNow()
+		defer func() {
+			if err := conn.CloseNow(); err != nil {
+				t.Logf("websocket close error: %v", err)
+			}
+		}()
 		handler(r.Context(), conn)
 	}))
 }
@@ -40,7 +44,10 @@ func TestClient_AuthFlow(t *testing.T) {
 		}
 
 		var auth protocol.AuthMessage
-		json.Unmarshal(data, &auth)
+		if err := json.Unmarshal(data, &auth); err != nil {
+			t.Errorf("failed to unmarshal auth message: %v", err)
+			return
+		}
 		assert.Equal(t, "auth", auth.Type)
 		assert.Equal(t, "test-sub", auth.Subdomain)
 
@@ -54,7 +61,10 @@ func TestClient_AuthFlow(t *testing.T) {
 			MaxBodySizeBytes: 5 * 1024 * 1024,
 		}
 		ackData, _ := json.Marshal(ack)
-		conn.Write(ctx, websocket.MessageText, ackData)
+		if err := conn.Write(ctx, websocket.MessageText, ackData); err != nil {
+			t.Errorf("failed to write auth ack: %v", err)
+			return
+		}
 
 		// Keep connection open briefly
 		time.Sleep(200 * time.Millisecond)
@@ -119,7 +129,9 @@ func TestClient_ProxiesHTTPRequest(t *testing.T) {
 	localServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Test", "proxied")
 		w.WriteHeader(200)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer localServer.Close()
 
@@ -133,7 +145,10 @@ func TestClient_ProxiesHTTPRequest(t *testing.T) {
 		}
 
 		var auth protocol.AuthMessage
-		json.Unmarshal(data, &auth)
+		if err := json.Unmarshal(data, &auth); err != nil {
+			t.Errorf("failed to unmarshal auth message: %v", err)
+			return
+		}
 
 		// Send auth-ack
 		ack := protocol.AuthAckMessage{
@@ -145,7 +160,10 @@ func TestClient_ProxiesHTTPRequest(t *testing.T) {
 			MaxBodySizeBytes: 5 * 1024 * 1024,
 		}
 		ackData, _ := json.Marshal(ack)
-		conn.Write(ctx, websocket.MessageText, ackData)
+		if err := conn.Write(ctx, websocket.MessageText, ackData); err != nil {
+			t.Errorf("failed to write auth ack: %v", err)
+			return
+		}
 
 		// Short delay so client processes auth-ack
 		time.Sleep(50 * time.Millisecond)
@@ -160,7 +178,10 @@ func TestClient_ProxiesHTTPRequest(t *testing.T) {
 			HasBody: false,
 		}
 		reqData, _ := json.Marshal(reqMsg)
-		conn.Write(ctx, websocket.MessageText, reqData)
+		if err := conn.Write(ctx, websocket.MessageText, reqData); err != nil {
+			t.Errorf("failed to write request message: %v", err)
+			return
+		}
 
 		// Read response messages
 		for i := 0; i < 10; i++ {
@@ -170,7 +191,10 @@ func TestClient_ProxiesHTTPRequest(t *testing.T) {
 			}
 			if msgType == websocket.MessageText {
 				var env protocol.Envelope
-				json.Unmarshal(respData, &env)
+				if err := json.Unmarshal(respData, &env); err != nil {
+					t.Errorf("failed to unmarshal envelope: %v", err)
+					return
+				}
 				if env.Type == "http-response-end" {
 					return
 				}
@@ -219,7 +243,9 @@ func TestClient_ProxiesHTTPRequest(t *testing.T) {
 func TestClient_TTLExpired(t *testing.T) {
 	server := mockTunnelServer(t, func(ctx context.Context, conn *websocket.Conn) {
 		// Read auth
-		conn.Read(ctx)
+		if _, _, err := conn.Read(ctx); err != nil {
+			return
+		}
 
 		// Send auth-ack
 		ack := protocol.AuthAckMessage{
@@ -231,7 +257,9 @@ func TestClient_TTLExpired(t *testing.T) {
 			MaxBodySizeBytes: 5 * 1024 * 1024,
 		}
 		ackData, _ := json.Marshal(ack)
-		conn.Write(ctx, websocket.MessageText, ackData)
+		if err := conn.Write(ctx, websocket.MessageText, ackData); err != nil {
+			return
+		}
 
 		time.Sleep(50 * time.Millisecond)
 
@@ -241,7 +269,9 @@ func TestClient_TTLExpired(t *testing.T) {
 			Message: "Tunnel TTL expired",
 		}
 		errData, _ := json.Marshal(errMsg)
-		conn.Write(ctx, websocket.MessageText, errData)
+		if err := conn.Write(ctx, websocket.MessageText, errData); err != nil {
+			return
+		}
 
 		time.Sleep(100 * time.Millisecond)
 	})
