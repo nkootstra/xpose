@@ -21,23 +21,27 @@ builds:
       - -X github.com/nkootstra/xpose/internal/version.Date={{.Date}}
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
-brews:
+homebrew_casks:
   - repository:
       owner: nkootstra
       name: homebrew-tap
     homepage: "https://xpose.dev"
     description: "Expose local servers to the internet via Cloudflare"
     license: "MIT"
-    install: |
-      bin.install "xpose"
-    test: |
-      system "#{bin}/xpose", "--version"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/xpose"]
+          end
 
 checksum:
   name_template: "checksums.txt"
