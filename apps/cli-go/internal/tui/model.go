@@ -102,10 +102,10 @@ func (m Model) renderHeader() string {
 // renderFooter builds the footer string.
 func (m Model) renderFooter() string {
 	if !m.ready || len(m.traffic) == 0 {
-		return dimStyle.Render("  q quit | arrows/pgup/pgdn scroll")
+		return dimStyle.Render("  q quit | b open browser | arrows/pgup/pgdn scroll")
 	}
 	pct := m.viewport.ScrollPercent()
-	return dimStyle.Render(fmt.Sprintf("  q quit | arrows/pgup/pgdn scroll | %3.0f%%", pct*100))
+	return dimStyle.Render(fmt.Sprintf("  q quit | b open browser | arrows/pgup/pgdn scroll | %3.0f%%", pct*100))
 }
 
 // countLines counts the number of newline-terminated lines in a string.
@@ -172,7 +172,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c.Disconnect()
 			}
 			return m, tea.Quit
+		case "b":
+			// Open the first connected tunnel URL in the browser.
+			for _, t := range m.tunnels {
+				if t.status == tunnel.StatusConnected && t.url != "" {
+					return m, openBrowser(t.url)
+				}
+			}
 		}
+
+	case openBrowserMsg:
+		// Nothing to do — could show an error in a future iteration.
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

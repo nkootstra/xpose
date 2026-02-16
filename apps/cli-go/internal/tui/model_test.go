@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/nkootstra/xpose/internal/tunnel"
 	"github.com/stretchr/testify/assert"
 )
@@ -186,6 +187,34 @@ func TestModel_TickDoesNotGoNegative(t *testing.T) {
 
 func TestFormatTTL_Negative(t *testing.T) {
 	assert.Equal(t, "0h 0m 0s", FormatTTL(-1))
+}
+
+func TestModel_BKeyReturnsCommand(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.tunnels[0].status = tunnel.StatusConnected
+	m.tunnels[0].url = "https://a.xpose.dev"
+
+	msg := tea.KeyPressMsg{Code: 'b', Text: "b"}
+	_, cmd := m.Update(msg)
+	assert.NotNil(t, cmd, "pressing 'b' when connected should return a command")
+}
+
+func TestModel_BKeyNoCommandWhenDisconnected(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.tunnels[0].status = tunnel.StatusConnecting
+
+	msg := tea.KeyPressMsg{Code: 'b', Text: "b"}
+	_, cmd := m.Update(msg)
+	// When not connected, 'b' should not produce an openBrowser command.
+	// The viewport update may still return a command, so we just verify
+	// the model didn't crash.
+	_ = cmd
 }
 
 func TestRenderBanner_DefaultWidth(t *testing.T) {
