@@ -1,0 +1,50 @@
+version: 2
+
+project_name: xpose
+
+builds:
+  - main: .
+    binary: xpose
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/xpose-dev/xpose/internal/version.Version={{.Version}}
+      - -X github.com/xpose-dev/xpose/internal/version.Commit={{.Commit}}
+      - -X github.com/xpose-dev/xpose/internal/version.Date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+brews:
+  - repository:
+      owner: xpose-dev
+      name: homebrew-tap
+    homepage: "https://xpose.dev"
+    description: "Expose local servers to the internet via Cloudflare"
+    license: "MIT"
+    install: |
+      bin.install "xpose"
+    test: |
+      system "#{bin}/xpose", "--version"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

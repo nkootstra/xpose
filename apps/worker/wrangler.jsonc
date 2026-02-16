@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xpose-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "MAX_BODY_SIZE_BYTES": "5242880",
+    "PUBLIC_DOMAIN": "xpose.dev"
+  },
+  // Two separate routes required:
+  // *.xpose.dev/* matches subdomains only (NOT the bare domain)
+  // xpose.dev/* matches the bare domain only
+  // Do NOT use *xpose.dev/* (no dot) - it would also match notxpose.dev, myxpose.dev, etc.
+  "routes": [
+    { "pattern": "*.xpose.dev/*", "zone_name": "xpose.dev" },
+    { "pattern": "xpose.dev/*", "zone_name": "xpose.dev" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "TUNNEL_SESSION", "class_name": "TunnelSession" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TunnelSession"] }
+  ]
+}
