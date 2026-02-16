@@ -65,7 +65,6 @@ function payloadTooLargeResponse(kind: "Request" | "Response", maxBytes: number)
 
 export class TunnelSession extends DurableObject<Env> {
   private pendingRequests = new Map<string, PendingRequest>();
-  private clientConnected = false;
   private readonly maxBodySizeBytes: number;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -101,7 +100,6 @@ export class TunnelSession extends DurableObject<Env> {
     const [client, server] = Object.values(pair);
 
     this.ctx.acceptWebSocket(server);
-    this.clientConnected = true;
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -137,7 +135,7 @@ export class TunnelSession extends DurableObject<Env> {
 
   private async handleProxyRequest(request: Request): Promise<Response> {
     const sockets = this.ctx.getWebSockets();
-    if (sockets.length === 0 || !this.clientConnected) {
+    if (sockets.length === 0) {
       return new Response("Tunnel not connected", {
         status: 502,
         headers: { "retry-after": "5" },
@@ -178,35 +176,49 @@ export class TunnelSession extends DurableObject<Env> {
       });
     });
 
-    ws.send(
-      JSON.stringify({
-        type: "http-request",
-        id: requestId,
-        method: request.method,
-        path: url.pathname + url.search,
-        headers,
-        hasBody,
-      } satisfies TunnelMessage),
-    );
-
-    if (hasBody) {
-      for (const chunk of bufferedBody.chunks) {
-        ws.send(
-          JSON.stringify({
-            type: "http-body-chunk",
-            id: requestId,
-            done: false,
-          } satisfies TunnelMessage),
-        );
-        ws.send(encodeBinaryFrame(requestId, chunk));
-      }
-
+    try {
       ws.send(
         JSON.stringify({
-          type: "http-request-end",
+          type: "http-request",
           id: requestId,
+          method: request.method,
+          path: url.pathname + url.search,
+          headers,
+          hasBody,
         } satisfies TunnelMessage),
       );
+
+      if (hasBody) {
+        for (const chunk of bufferedBody.chunks) {
+          ws.send(
+            JSON.stringify({
+              type: "http-body-chunk",
+              id: requestId,
+              done: false,
+            } satisfies TunnelMessage),
+          );
+          ws.send(encodeBinaryFrame(requestId, chunk));
+        }
+
+        ws.send(
+          JSON.stringify({
+            type: "http-request-end",
+            id: requestId,
+          } satisfies TunnelMessage),
+        );
+      }
+    } catch {
+      // WebSocket was closed between the getWebSockets() check and send
+      // (e.g. TTL alarm fired). Clean up and return 502.
+      const pending = this.pendingRequests.get(requestId);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        this.pendingRequests.delete(requestId);
+      }
+      return new Response("Tunnel not connected", {
+        status: 502,
+        headers: { "retry-after": "5" },
+      });
     }
 
     return responsePromise;
@@ -354,16 +366,12 @@ export class TunnelSession extends DurableObject<Env> {
   }
 
   async webSocketClose(): Promise<void> {
-    this.clientConnected = this.ctx.getWebSockets().length > 0;
-
     // Grace period: reject pending requests if CLI doesn't reconnect.
     setTimeout(() => {
       if (this.ctx.getWebSockets().length > 0) {
-        this.clientConnected = true;
         return;
       }
 
-      this.clientConnected = false;
       for (const [, pending] of this.pendingRequests) {
         clearTimeout(pending.timeout);
         pending.resolve(
@@ -375,7 +383,8 @@ export class TunnelSession extends DurableObject<Env> {
   }
 
   async webSocketError(): Promise<void> {
-    this.clientConnected = this.ctx.getWebSockets().length > 0;
+    // Connection state is derived from ctx.getWebSockets() in handleProxyRequest,
+    // so no in-memory flag needs updating here.
   }
 
   // TTL expiration
@@ -398,6 +407,5 @@ export class TunnelSession extends DurableObject<Env> {
       );
     }
     this.pendingRequests.clear();
-    this.clientConnected = false;
   }
 }

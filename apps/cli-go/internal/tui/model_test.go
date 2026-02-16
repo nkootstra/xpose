@@ -47,6 +47,7 @@ func TestModel_HandleAuthenticated(t *testing.T) {
 	assert.Equal(t, tunnel.StatusConnected, model.tunnels[0].status)
 	assert.Equal(t, "https://a.xpose.dev", model.tunnels[0].url)
 	assert.Equal(t, 3600, model.tunnels[0].ttl)
+	assert.Equal(t, 3600, model.tunnels[0].ttlRemaining)
 }
 
 func TestModel_HandleTraffic(t *testing.T) {
@@ -86,6 +87,7 @@ func TestModel_ViewConnected(t *testing.T) {
 	m.tunnels[0].status = tunnel.StatusConnected
 	m.tunnels[0].url = "https://a.xpose.dev"
 	m.tunnels[0].ttl = 3600
+	m.tunnels[0].ttlRemaining = 3600
 	m.tunnels[0].maxBody = 5 * 1024 * 1024
 
 	view := m.ViewString()
@@ -147,10 +149,48 @@ func TestModel_TrafficRingBuffer(t *testing.T) {
 }
 
 func TestRenderBanner(t *testing.T) {
-	banner := RenderBanner("https://test.xpose.dev", 3000, 14400, 5*1024*1024)
+	banner := RenderBanner("https://test.xpose.dev", 3000, 14400, 5*1024*1024, 80)
 	assert.Contains(t, banner, "xpose")
 	assert.Contains(t, banner, "https://test.xpose.dev")
 	assert.Contains(t, banner, "localhost:3000")
 	assert.Contains(t, banner, "4h 0m 0s")
-	assert.True(t, strings.Contains(banner, "─"))
+	assert.True(t, strings.Contains(banner, "\u2500"))
+}
+
+func TestModel_TickDecrementsRemaining(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.tunnels[0].status = tunnel.StatusConnected
+	m.tunnels[0].ttl = 3600
+	m.tunnels[0].ttlRemaining = 3600
+
+	newM, _ := m.Update(tickMsg(time.Now()))
+	model := newM.(Model)
+	assert.Equal(t, 3599, model.tunnels[0].ttlRemaining)
+}
+
+func TestModel_TickDoesNotGoNegative(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.tunnels[0].status = tunnel.StatusConnected
+	m.tunnels[0].ttlRemaining = 0
+
+	newM, _ := m.Update(tickMsg(time.Now()))
+	model := newM.(Model)
+	assert.Equal(t, 0, model.tunnels[0].ttlRemaining)
+}
+
+func TestFormatTTL_Negative(t *testing.T) {
+	assert.Equal(t, "0h 0m 0s", FormatTTL(-1))
+}
+
+func TestRenderBanner_DefaultWidth(t *testing.T) {
+	banner := RenderBanner("https://test.xpose.dev", 3000, 3600, 0, 0)
+	assert.Contains(t, banner, "xpose")
+	// Should not contain max body line when maxBodySizeBytes is 0
+	assert.NotContains(t, banner, "Max body")
 }

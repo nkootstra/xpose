@@ -39,4 +39,7 @@ export const PROTOCOL = {
   /** Auto ping/pong strings for DO WebSocket hibernation */
   PING_MESSAGE: "ping",
   PONG_MESSAGE: "pong",
+
+  /** How long a CLI session can be resumed after exit (seconds) */
+  SESSION_RESUME_WINDOW_SECONDS: 600,
 } as const;

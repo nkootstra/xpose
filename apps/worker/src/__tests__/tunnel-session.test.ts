@@ -117,7 +117,7 @@ describe("TunnelSession", () => {
       expect(res.status).toBe(502);
     });
 
-    it("sets clientConnected to false after alarm", async () => {
+    it("returns 502 after alarm closes all WebSockets", async () => {
       const stub = getStub("ttl-alarm-disconnect");
       await connectAndAuth(stub);
 

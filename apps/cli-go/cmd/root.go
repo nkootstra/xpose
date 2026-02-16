@@ -7,11 +7,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/nkootstra/xpose/internal/protocol"
+	"github.com/nkootstra/xpose/internal/session"
 	"github.com/nkootstra/xpose/internal/tui"
 	"github.com/nkootstra/xpose/internal/tunnel"
 	"github.com/nkootstra/xpose/internal/turbo"
@@ -26,6 +28,7 @@ var (
 	ttlFlag     int
 	subdomain   string
 	domainFlag  string
+	resumeFlag  bool
 )
 
 var rootCmd = &cobra.Command{
@@ -45,6 +48,7 @@ func init() {
 	rootCmd.Flags().IntVar(&ttlFlag, "ttl", protocol.DefaultTTLSeconds, "Tunnel TTL in seconds")
 	rootCmd.Flags().StringVar(&subdomain, "subdomain", "", "Custom subdomain (default: random)")
 	rootCmd.Flags().StringVar(&domainFlag, "domain", protocol.DefaultPublicDomain, "Public tunnel domain")
+	rootCmd.Flags().BoolVarP(&resumeFlag, "resume", "r", false, "Resume the previous tunnel session")
 }
 
 func normalizeDomain(raw string) string {
@@ -67,7 +71,24 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid TTL: must be a positive number of seconds")
 	}
 
-	// Parse manual ports from positional args
+	// --- Resume mode ---
+	if resumeFlag {
+		if len(args) > 0 || fromTurbo {
+			return fmt.Errorf("cannot use --resume with port arguments or --from-turbo")
+		}
+
+		prev, err := session.Load()
+		if err != nil {
+			return fmt.Errorf("failed to load session: %w", err)
+		}
+		if prev == nil {
+			return fmt.Errorf("no session to resume (sessions expire after %d minutes)", protocol.SessionResumeWindowSeconds/60)
+		}
+
+		return runTunnels(cmd, prev.Tunnels)
+	}
+
+	// --- Normal mode: resolve ports ---
 	ports := make(map[int]struct{})
 	for _, arg := range args {
 		port, err := strconv.Atoi(arg)
@@ -127,21 +148,20 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no ports provided. Pass ports directly (e.g. `xpose 3000 8787`) or use --from-turbo")
 	}
 
-	// Deduplicate and sort
+	// Deduplicate
 	resolvedPorts := make([]int, 0, len(ports))
 	for p := range ports {
 		resolvedPorts = append(resolvedPorts, p)
 	}
 
 	baseSubdomain := strings.TrimSpace(subdomain)
-	tunnelTTL := int(math.Min(float64(ttlFlag), float64(protocol.MaxTTLSeconds)))
 	tunnelDomain := normalizeDomain(domainFlag)
 	if tunnelDomain == "" {
 		return fmt.Errorf("invalid --domain: pass a hostname like xpose.dev")
 	}
 
-	// Create tunnel clients
-	clients := make([]*tunnel.Client, len(resolvedPorts))
+	// Build tunnel entries with generated subdomains
+	entries := make([]session.TunnelEntry, len(resolvedPorts))
 	for i, port := range resolvedPorts {
 		var sub string
 		if baseSubdomain != "" {
@@ -153,14 +173,41 @@ func run(cmd *cobra.Command, args []string) error {
 		} else {
 			sub = protocol.GenerateSubdomainID()
 		}
-
-		clients[i] = tunnel.NewClient(tunnel.ClientOptions{
+		entries[i] = session.TunnelEntry{
 			Subdomain: sub,
 			Port:      port,
+			Domain:    tunnelDomain,
+		}
+	}
+
+	return runTunnels(cmd, entries)
+}
+
+// runTunnels creates tunnel clients from entries, saves the session, runs the
+// TUI, and prints the resume hint after exit.
+func runTunnels(_ *cobra.Command, entries []session.TunnelEntry) error {
+	tunnelTTL := int(math.Min(float64(ttlFlag), float64(protocol.MaxTTLSeconds)))
+
+	clients := make([]*tunnel.Client, len(entries))
+	ports := make([]int, len(entries))
+	for i, e := range entries {
+		ports[i] = e.Port
+		clients[i] = tunnel.NewClient(tunnel.ClientOptions{
+			Subdomain: e.Subdomain,
+			Port:      e.Port,
 			TTL:       tunnelTTL,
 			Host:      "localhost",
-			Domain:    tunnelDomain,
+			Domain:    e.Domain,
 		})
+	}
+
+	// Save session so it can be resumed after exit.
+	sess := &session.Session{
+		Tunnels:   entries,
+		CreatedAt: time.Now(),
+	}
+	if err := session.Save(sess); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to save session: %v\n", err)
 	}
 
 	// Start all tunnel connections
@@ -169,11 +216,21 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Run the TUI
-	model := tui.NewModel(clients, resolvedPorts)
+	model := tui.NewModel(clients, ports)
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
+
+	// Update session timestamp so the resume window starts from exit time.
+	sess.CreatedAt = time.Now()
+	if err := session.Save(sess); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to save session: %v\n", err)
+	}
+
+	// Print resume hint after the alt screen exits (persists in terminal).
+	minutes := protocol.SessionResumeWindowSeconds / 60
+	fmt.Fprintf(os.Stderr, "\n  Session saved. Resume within %d minutes with: xpose -r\n\n", minutes)
 
 	return nil
 }
