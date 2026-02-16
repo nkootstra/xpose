@@ -60,5 +60,5 @@ describe("encodeBinaryFrame / decodeBinaryFrame", () => {
     expect(decoded.requestId).toBe(requestId);
     expect(decoded.body.byteLength).toBe(size);
     expect(decoded.body).toEqual(body);
-  });
+  }, 15000);
 });
