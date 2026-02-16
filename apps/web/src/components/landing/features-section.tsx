@@ -1,4 +1,4 @@
-import { Globe, Code, Zap } from 'lucide-react'
+import { Code, Globe, Zap } from 'lucide-react'
 import { AnimateIn } from '@/components/shared/animate-in'
 
 const FEATURES = [

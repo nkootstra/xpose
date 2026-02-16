@@ -43,7 +43,7 @@ export function TerminalDemo({ visible }: TerminalDemoProps) {
   useEffect(() => {
     if (!visible) return
 
-    const timers: ReturnType<typeof setTimeout>[] = []
+    const timers: Array<ReturnType<typeof setTimeout>> = []
 
     TERMINAL_LINES.forEach((_, i) => {
       timers.push(

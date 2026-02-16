@@ -10,7 +10,7 @@ interface Heading {
 
 export function TableOfContents() {
   const location = useLocation()
-  const [headings, setHeadings] = useState<Heading[]>([])
+  const [headings, setHeadings] = useState<Array<Heading>>([])
   const [activeId, setActiveId] = useState<string>('')
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export function TableOfContents() {
       if (!article) return
 
       const h2Elements = article.querySelectorAll('h2')
-      const headingData: Heading[] = []
+      const headingData: Array<Heading> = []
 
       h2Elements.forEach((heading) => {
         const text = heading.textContent || ''

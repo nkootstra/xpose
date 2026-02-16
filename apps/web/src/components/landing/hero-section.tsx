@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import { Github } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { TerminalDemo } from './terminal-demo'
-import { SPRING_ENTRANCE, GITHUB_URL, DOCS_URL } from '@/lib/constants'
+import { Button } from '@/components/ui/button'
+import { DOCS_URL, GITHUB_URL, SPRING_ENTRANCE } from '@/lib/constants'
 
 /* ANIMATION STORYBOARD
  *

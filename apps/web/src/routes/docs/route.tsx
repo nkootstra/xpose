@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { Outlet, createFileRoute } from '@tanstack/react-router'
 import { DocsSidebar } from '@/components/docs/docs-sidebar'
 import { TableOfContents } from '@/components/docs/table-of-contents'
 

@@ -1,5 +1,6 @@
-import { createContext, useContext, useId, useState, type ReactNode } from 'react'
+import {  createContext, useContext, useId, useState } from 'react'
 import { motion } from 'motion/react'
+import type {ReactNode} from 'react';
 import { SPRING_POP } from '@/lib/constants'
 
 interface TabsContextValue {

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { seo } from '@/lib/seo'
 import { CodeBlock } from '@/components/shared/code-block'
 

@@ -8,9 +8,9 @@
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "test": "vitest run --config vitest.config.ts",
-    "lint": "eslint",
+    "lint": "eslint src",
     "format": "prettier",
-    "check": "prettier --write . && eslint --fix"
+    "check": "prettier --write . && eslint src --fix"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -43,6 +43,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "eslint": "^9.37.0",
     "jsdom": "^27.0.0",
     "prettier": "^3.5.3",
     "typescript": "^5.7.2",

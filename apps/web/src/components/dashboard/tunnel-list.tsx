@@ -1,8 +1,9 @@
-import { TunnelCard, type Tunnel } from './tunnel-card'
+import {  TunnelCard } from './tunnel-card'
 import { EmptyState } from './empty-state'
+import type {Tunnel} from './tunnel-card';
 
 interface TunnelListProps {
-  tunnels: Tunnel[]
+  tunnels: Array<Tunnel>
 }
 
 export function TunnelList({ tunnels }: TunnelListProps) {

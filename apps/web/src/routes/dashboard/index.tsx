@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
+import type { Tunnel } from '@/components/dashboard/tunnel-card'
 import { seo } from '@/lib/seo'
 import { TunnelList } from '@/components/dashboard/tunnel-list'
 import { ConnectionStatus } from '@/components/dashboard/connection-status'
-import type { Tunnel } from '@/components/dashboard/tunnel-card'
 
 export const Route = createFileRoute('/dashboard/')({
   head: () => ({
@@ -15,7 +15,7 @@ export const Route = createFileRoute('/dashboard/')({
   component: DashboardPage,
 })
 
-const MOCK_TUNNELS: Tunnel[] = [
+const MOCK_TUNNELS: Array<Tunnel> = [
   {
     id: '1',
     url: 'https://abc123def456.xpose.dev',

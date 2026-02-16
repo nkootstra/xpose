@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { Github } from 'lucide-react'
-import { Logo } from '@/components/shared/logo'
 import { MobileNav } from './mobile-nav'
+import { Logo } from '@/components/shared/logo'
 import { Button } from '@/components/ui/button'
-import { GITHUB_URL, DOCS_URL } from '@/lib/constants'
+import { DOCS_URL, GITHUB_URL } from '@/lib/constants'
 
 export function SiteHeader() {
   return (

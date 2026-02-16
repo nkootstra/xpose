@@ -5,9 +5,9 @@ import {
   createRootRoute,
 } from '@tanstack/react-router'
 import { MotionConfig } from 'motion/react'
+import appCss from '../styles.css?url'
 import { SiteHeader } from '@/components/layout/site-header'
 import { SiteFooter } from '@/components/layout/site-footer'
-import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
   head: () => ({
