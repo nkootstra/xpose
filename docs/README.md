@@ -10,7 +10,7 @@ For production deployment and release setup, see `docs/PRODUCTION_SETUP.md`.
 
 ```bash
 # Install via Homebrew
-brew install xpose-dev/tap/xpose
+brew install nkootstra/tap/xpose
 
 # Expose a local server
 xpose 3000
@@ -28,7 +28,7 @@ xpose 3000
 
 - Built entirely on Cloudflare's global edge network
 - No dedicated servers to manage - fully serverless
-- Install via Homebrew (`brew install xpose-dev/tap/xpose`)
+- Install via Homebrew (`brew install nkootstra/tap/xpose`)
 - Beautiful terminal UI with live traffic logging
 - Auto-reconnection with exponential backoff
 - Configurable TTL (default 4 hours)
@@ -90,17 +90,17 @@ Add **two** DNS records in the Cloudflare dashboard. Both must be **proxied** (o
 
 If your tunnel domain is the zone apex (example: `example.com`):
 
-| Type | Name | Content | Proxy |
-|------|------|---------|-------|
+| Type | Name | Content     | Proxy   |
+| ---- | ---- | ----------- | ------- |
 | A    | `@`  | `192.0.2.0` | Proxied |
 | A    | `*`  | `192.0.2.0` | Proxied |
 
 If your tunnel domain is a subdomain (example: `tunnel.example.com`):
 
-| Type | Name | Content | Proxy |
-|------|------|---------|-------|
-| A    | `tunnel`  | `192.0.2.0` | Proxied |
-| A    | `*.tunnel`  | `192.0.2.0` | Proxied |
+| Type | Name       | Content     | Proxy   |
+| ---- | ---------- | ----------- | ------- |
+| A    | `tunnel`   | `192.0.2.0` | Proxied |
+| A    | `*.tunnel` | `192.0.2.0` | Proxied |
 
 **Why a dummy IP?** Cloudflare Workers are serverless - there is no origin server. The DNS records exist solely to route traffic into Cloudflare's proxy network, where the Worker intercepts it. The IP `192.0.2.0` is from RFC 5737's TEST-NET-1 range, reserved for documentation. It is never contacted. Any IP would work, but this is the convention for "originless" Workers setups.
 
@@ -116,10 +116,12 @@ bun run deploy
 ```
 
 This deploys the Worker with two routes:
+
 - `*.tunnel.example.com/*` - catches all subdomain traffic
 - `tunnel.example.com/*` - catches bare domain traffic
 
 Before deploying, update `apps/worker/wrangler.jsonc`:
+
 - Set `vars.PUBLIC_DOMAIN` to your tunnel domain.
 - Set both route patterns to your tunnel domain.
 - Set `zone_name` to your Cloudflare zone (for example `example.com`).

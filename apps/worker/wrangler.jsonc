@@ -16,6 +16,9 @@
     { "pattern": "*.xpose.dev/*", "zone_name": "xpose.dev" },
     { "pattern": "xpose.dev/*", "zone_name": "xpose.dev" }
   ],
+  "services": [
+    { "binding": "WEB_APP", "service": "xpose-web" }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "TUNNEL_SESSION", "class_name": "TunnelSession" }

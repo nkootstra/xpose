@@ -16,9 +16,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/xpose-dev/xpose/internal/version.Version={{.Version}}
-      - -X github.com/xpose-dev/xpose/internal/version.Commit={{.Commit}}
-      - -X github.com/xpose-dev/xpose/internal/version.Date={{.Date}}
+      - -X github.com/nkootstra/xpose/internal/version.Version={{.Version}}
+      - -X github.com/nkootstra/xpose/internal/version.Commit={{.Commit}}
+      - -X github.com/nkootstra/xpose/internal/version.Date={{.Date}}
 
 archives:
   - format: tar.gz
@@ -29,7 +29,7 @@ archives:
 
 brews:
   - repository:
-      owner: xpose-dev
+      owner: nkootstra
       name: homebrew-tap
     homepage: "https://xpose.dev"
     description: "Expose local servers to the internet via Cloudflare"

@@ -9,7 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/xpose-dev/xpose/internal/protocol"
+	"github.com/nkootstra/xpose/internal/protocol"
 )
 
 // TunnelStatus represents the connection state of a tunnel.

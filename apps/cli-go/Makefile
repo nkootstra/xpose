@@ -4,9 +4,9 @@ VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  = -s -w \
-  -X github.com/xpose-dev/xpose/internal/version.Version=$(VERSION) \
-  -X github.com/xpose-dev/xpose/internal/version.Commit=$(COMMIT) \
-  -X github.com/xpose-dev/xpose/internal/version.Date=$(DATE)
+  -X github.com/nkootstra/xpose/internal/version.Version=$(VERSION) \
+  -X github.com/nkootstra/xpose/internal/version.Commit=$(COMMIT) \
+  -X github.com/nkootstra/xpose/internal/version.Date=$(DATE)
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/xpose .

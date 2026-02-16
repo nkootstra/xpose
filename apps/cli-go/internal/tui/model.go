@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/xpose-dev/xpose/internal/tunnel"
+	"github.com/nkootstra/xpose/internal/tunnel"
 )
 
 const maxTrafficEntries = 100

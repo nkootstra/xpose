@@ -11,11 +11,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
-	"github.com/xpose-dev/xpose/internal/protocol"
-	"github.com/xpose-dev/xpose/internal/tui"
-	"github.com/xpose-dev/xpose/internal/tunnel"
-	"github.com/xpose-dev/xpose/internal/turbo"
-	"github.com/xpose-dev/xpose/internal/version"
+	"github.com/nkootstra/xpose/internal/protocol"
+	"github.com/nkootstra/xpose/internal/tui"
+	"github.com/nkootstra/xpose/internal/tunnel"
+	"github.com/nkootstra/xpose/internal/turbo"
+	"github.com/nkootstra/xpose/internal/version"
 )
 
 var (

@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/xpose-dev/xpose/internal/protocol"
+	"github.com/nkootstra/xpose/internal/protocol"
 )
 
 // CalculateBackoff computes the delay before the next reconnection attempt

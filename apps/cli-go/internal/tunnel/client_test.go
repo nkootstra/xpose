@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/nkootstra/xpose/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xpose-dev/xpose/internal/protocol"
 )
 
 // mockTunnelServer creates a WebSocket server that speaks the xpose protocol.

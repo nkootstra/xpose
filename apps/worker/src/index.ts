@@ -47,12 +47,8 @@ app.all("*", async (c, next) => {
   const subdomain = extractSubdomain(hostname, domain);
 
   if (!subdomain) {
-    // Bare domain - landing page
-    return c.json({
-      name: "xpose",
-      description: "Expose local servers to the internet",
-      docs: "https://github.com/xpose-dev/xpose/blob/main/docs/README.md",
-    });
+    // Bare domain - forward to marketing site
+    return c.env.WEB_APP.fetch(c.req.raw);
   }
 
   c.set("subdomain", subdomain);

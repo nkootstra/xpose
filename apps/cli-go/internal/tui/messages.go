@@ -2,7 +2,7 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"github.com/xpose-dev/xpose/internal/tunnel"
+	"github.com/nkootstra/xpose/internal/tunnel"
 )
 
 // tunnelEventMsg wraps a tunnel event with its tunnel index.

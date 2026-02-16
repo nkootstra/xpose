@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nkootstra/xpose/internal/tunnel"
 	"github.com/stretchr/testify/assert"
-	"github.com/xpose-dev/xpose/internal/tunnel"
 )
 
 func TestNewModel_InitialState(t *testing.T) {

@@ -4,30 +4,39 @@ import app from "../index.js";
 import type { Env } from "../types.js";
 
 const testEnv = env as unknown as Env;
+
+// Mock WEB_APP service binding that echoes back a simple HTML page
+const mockWebApp = {
+  fetch: async () => new Response("<html><body>xpose landing</body></html>", {
+    headers: { "content-type": "text/html" },
+  }),
+} as unknown as Fetcher;
+
 const defaultBindings = {
   TUNNEL_SESSION: testEnv.TUNNEL_SESSION,
+  WEB_APP: mockWebApp,
   PUBLIC_DOMAIN: "xpose.dev",
 };
 
 describe("Hono router", () => {
   describe("bare domain", () => {
-    it("returns JSON landing page", async () => {
+    it("forwards to WEB_APP service binding", async () => {
       const res = await app.request("https://xpose.dev/", undefined, {
         ...defaultBindings,
       });
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body).toHaveProperty("name", "xpose");
-      expect(body).toHaveProperty("docs");
+      const body = await res.text();
+      expect(body).toContain("xpose landing");
+      expect(res.headers.get("content-type")).toContain("text/html");
     });
 
-    it("returns JSON landing page for bare domain with path", async () => {
+    it("forwards bare domain with path to WEB_APP", async () => {
       const res = await app.request("https://xpose.dev/anything", undefined, {
         ...defaultBindings,
       });
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body).toHaveProperty("name", "xpose");
+      const body = await res.text();
+      expect(body).toContain("xpose landing");
     });
   });
 
@@ -118,6 +127,7 @@ describe("Hono router", () => {
   describe("custom public domain", () => {
     const customBindings = {
       TUNNEL_SESSION: testEnv.TUNNEL_SESSION,
+      WEB_APP: mockWebApp,
       PUBLIC_DOMAIN: "tunnel.example.com",
     };
 

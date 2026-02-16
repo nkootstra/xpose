@@ -1,4 +1,4 @@
-module github.com/xpose-dev/xpose
+module github.com/nkootstra/xpose
 
 go 1.25.2
 

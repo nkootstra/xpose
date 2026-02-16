@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xpose-dev/xpose/internal/protocol"
+	"github.com/nkootstra/xpose/internal/protocol"
 )
 
 // ProxyResponse holds the result of proxying a request to the local server.

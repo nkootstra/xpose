@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(find:*)",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__search_cloudflare_documentation",
+      "mcp__motion__search-motion-codex",
+      "Bash(bunx --bun shadcn@latest create:*)",
+      "Bash(bun add:*)",
+      "Bash(bun run build:*)",
+      "Bash(timeout 15 bun dev:*)"
+    ]
+  }
+}

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/xpose-dev/xpose/cmd"
+	"github.com/nkootstra/xpose/cmd"
 )
 
 func main() {

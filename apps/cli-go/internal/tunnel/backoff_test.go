@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nkootstra/xpose/internal/protocol"
 	"github.com/stretchr/testify/assert"
-	"github.com/xpose-dev/xpose/internal/protocol"
 )
 
 func TestCalculateBackoff_FirstAttempt(t *testing.T) {

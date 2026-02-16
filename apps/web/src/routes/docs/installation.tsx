@@ -25,11 +25,9 @@ function InstallationPage() {
       <p className="mb-4 leading-relaxed text-gray-400">
         Install xpose on macOS or Linux:
       </p>
-      <CodeBlock code="brew install xpose-dev/tap/xpose" />
+      <CodeBlock code="brew install nkootstra/tap/xpose" />
 
-      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
-        Verify
-      </h2>
+      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">Verify</h2>
       <p className="mb-4 leading-relaxed text-gray-400">
         Check that it installed correctly:
       </p>

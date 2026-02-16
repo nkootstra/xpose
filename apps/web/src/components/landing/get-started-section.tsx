@@ -27,15 +27,12 @@ export function GetStartedSection() {
 
           <AnimateIn delay={100}>
             <div className="mt-8 w-full max-w-md">
-              <CodeBlock code="brew install xpose-dev/tap/xpose && xpose 3000" />
+              <CodeBlock code="brew install nkootstra/tap/xpose && xpose 3000" />
             </div>
           </AnimateIn>
 
           <AnimateIn delay={200}>
-            <Button
-              render={<Link to={DOCS_URL} />}
-              className="mt-8"
-            >
+            <Button render={<Link to={DOCS_URL} />} className="mt-8">
               Read the docs
             </Button>
           </AnimateIn>

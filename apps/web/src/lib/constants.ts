@@ -16,5 +16,5 @@ export const SPRING_POP = {
   damping: 25,
 }
 
-export const GITHUB_URL = 'https://github.com/xpose-dev/xpose'
+export const GITHUB_URL = 'https://github.com/nkootstra/xpose'
 export const DOCS_URL = '/docs'
