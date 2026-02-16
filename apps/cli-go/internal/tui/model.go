@@ -60,27 +60,93 @@ func NewModel(clients []*tunnel.Client, ports []int) Model {
 	}
 }
 
-// headerHeight returns the number of lines occupied by the banner/header area.
-func (m Model) headerHeight() int {
-	var lines int
+// renderHeader builds the header string (banner area).
+func (m Model) renderHeader() string {
+	var b strings.Builder
+
 	for _, t := range m.tunnels {
 		switch t.status {
 		case tunnel.StatusConnected:
-			lines += 9 // banner lines (with separator)
-			if t.maxBody > 0 {
-				lines++ // max body line
-			}
-		default:
-			lines += 2 // status line
-			if t.lastError != "" && t.status != tunnel.StatusConnected {
-				lines++
-			}
+			b.WriteString(RenderBanner(t.url, t.port, t.ttlRemaining, t.maxBody, m.width))
+
+		case tunnel.StatusConnecting:
+			b.WriteString(fmt.Sprintf("\n  %s %s\n",
+				m.spinner.View(),
+				StyledTunnelStatus("connecting"),
+			))
+
+		case tunnel.StatusReconnecting:
+			b.WriteString(fmt.Sprintf("\n  %s %s\n",
+				m.spinner.View(),
+				StyledTunnelStatus("reconnecting"),
+			))
+
+		case tunnel.StatusDisconnected:
+			b.WriteString(fmt.Sprintf("\n  %s\n", StyledTunnelStatus("disconnected")))
+
+		case tunnel.StatusExpired:
+			b.WriteString(fmt.Sprintf("\n  %s\n", StyledTunnelStatus("expired")))
+		}
+
+		if t.lastError != "" && t.status != tunnel.StatusConnected {
+			b.WriteString(fmt.Sprintf("  %s %s\n",
+				errorStyle.Render("Error:"),
+				t.lastError,
+			))
 		}
 	}
-	return lines
+
+	return b.String()
 }
 
-const footerHeight = 1
+// renderFooter builds the footer string.
+func (m Model) renderFooter() string {
+	if !m.ready || len(m.traffic) == 0 {
+		return dimStyle.Render("  q quit | arrows/pgup/pgdn scroll")
+	}
+	pct := m.viewport.ScrollPercent()
+	return dimStyle.Render(fmt.Sprintf("  q quit | arrows/pgup/pgdn scroll | %3.0f%%", pct*100))
+}
+
+// countLines counts the number of newline-terminated lines in a string.
+func countLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+// syncViewportSize recalculates the viewport dimensions based on the current
+// header height and terminal size. Must be called whenever the header might
+// have changed (window resize, status change, authentication, tick).
+func (m *Model) syncViewportSize() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+
+	header := m.renderHeader()
+	hLines := countLines(header)
+	const fLines = 1 // footer is always 1 line
+
+	vpHeight := m.height - hLines - fLines
+	if vpHeight < 1 {
+		vpHeight = 1
+	}
+
+	if !m.ready {
+		m.viewport = viewport.New(
+			viewport.WithWidth(m.width),
+			viewport.WithHeight(vpHeight),
+		)
+		m.viewport.MouseWheelEnabled = true
+		m.viewport.MouseWheelDelta = 3
+		m.updateViewportContent()
+		m.ready = true
+	} else {
+		m.viewport.SetWidth(m.width)
+		m.viewport.SetHeight(vpHeight)
+	}
+}
 
 // Init sets up event listeners, the spinner, and the TTL ticker.
 func (m Model) Init() tea.Cmd {
@@ -111,25 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-
-		vpHeight := m.height - m.headerHeight() - footerHeight
-		if vpHeight < 1 {
-			vpHeight = 1
-		}
-
-		if !m.ready {
-			m.viewport = viewport.New(
-				viewport.WithWidth(m.width),
-				viewport.WithHeight(vpHeight),
-			)
-			m.viewport.MouseWheelEnabled = true
-			m.viewport.MouseWheelDelta = 3
-			m.updateViewportContent()
-			m.ready = true
-		} else {
-			m.viewport.SetWidth(m.width)
-			m.viewport.SetHeight(vpHeight)
-		}
+		m.syncViewportSize()
 
 	case tickMsg:
 		for i := range m.tunnels {
@@ -137,6 +185,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tunnels[i].ttlRemaining--
 			}
 		}
+		// Header changes on tick (TTL updates), so re-sync viewport height.
+		m.syncViewportSize()
 		cmds = append(cmds, tickEvery())
 
 	case spinner.TickMsg:
@@ -151,6 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch ev.Type {
 		case "status":
 			m.tunnels[idx].status = ev.Status
+			m.syncViewportSize()
 
 		case "authenticated":
 			if ev.Authenticated != nil {
@@ -160,6 +211,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tunnels[idx].maxBody = ev.Authenticated.MaxBodySizeBytes
 				m.tunnels[idx].sessionID = ev.Authenticated.SessionID
 				m.tunnels[idx].status = tunnel.StatusConnected
+				m.syncViewportSize()
 			}
 
 		case "traffic":
@@ -228,64 +280,34 @@ func (m *Model) updateViewportContent() {
 	m.viewport.SetContent(content)
 }
 
-// View renders the TUI display.
+// View renders the TUI display. The output is constrained to exactly m.height
+// lines so the header stays pinned at the top and the footer at the bottom.
 func (m Model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
 
-	var b strings.Builder
+	header := m.renderHeader()
+	footer := m.renderFooter()
 
-	// Fixed header: banners for all tunnels
-	for _, t := range m.tunnels {
-		switch t.status {
-		case tunnel.StatusConnected:
-			b.WriteString(RenderBanner(t.url, t.port, t.ttlRemaining, t.maxBody, m.width))
-
-		case tunnel.StatusConnecting:
-			b.WriteString(fmt.Sprintf("\n  %s %s\n",
-				m.spinner.View(),
-				StyledTunnelStatus("connecting"),
-			))
-
-		case tunnel.StatusReconnecting:
-			b.WriteString(fmt.Sprintf("\n  %s %s\n",
-				m.spinner.View(),
-				StyledTunnelStatus("reconnecting"),
-			))
-
-		case tunnel.StatusDisconnected:
-			b.WriteString(fmt.Sprintf("\n  %s\n", StyledTunnelStatus("disconnected")))
-
-		case tunnel.StatusExpired:
-			b.WriteString(fmt.Sprintf("\n  %s\n", StyledTunnelStatus("expired")))
-		}
-
-		if t.lastError != "" && t.status != tunnel.StatusConnected {
-			b.WriteString(fmt.Sprintf("  %s %s\n",
-				errorStyle.Render("Error:"),
-				t.lastError,
-			))
-		}
-	}
-
-	// Scrollable traffic viewport
+	var body string
 	if m.ready {
-		b.WriteString(m.viewport.View())
-		b.WriteString("\n")
+		body = m.viewport.View()
+	} else {
+		body = dimStyle.Render("  Initializing...")
 	}
 
-	// Footer
-	footer := dimStyle.Render("  q quit | arrows/pgup/pgdn scroll")
-	if m.ready {
-		pct := m.viewport.ScrollPercent()
-		if len(m.traffic) > 0 {
-			footer = dimStyle.Render(fmt.Sprintf("  q quit | arrows/pgup/pgdn scroll | %3.0f%%", pct*100))
-		}
-	}
-	b.WriteString(footer)
+	// Assemble: header + viewport body + footer, constrained to terminal height.
+	// Use lipgloss.PlaceVertical to ensure the output is exactly m.height lines
+	// so Bubble Tea never scrolls the alt screen buffer.
+	content := lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 
-	v := tea.NewView(b.String())
+	if m.height > 0 {
+		// Pad or truncate to exactly m.height lines.
+		content = lipgloss.PlaceVertical(m.height, lipgloss.Top, content)
+	}
+
+	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
