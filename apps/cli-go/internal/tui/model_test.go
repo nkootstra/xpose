@@ -22,6 +22,7 @@ func TestNewModel_InitialState(t *testing.T) {
 	assert.Equal(t, 8080, m.tunnels[1].port)
 	assert.Equal(t, tunnel.StatusConnecting, m.tunnels[0].status)
 	assert.Equal(t, tunnel.StatusConnecting, m.tunnels[1].status)
+	assert.Equal(t, panelRight, m.focus)
 }
 
 func TestModel_HandleAuthenticated(t *testing.T) {
@@ -211,10 +212,96 @@ func TestModel_BKeyNoCommandWhenDisconnected(t *testing.T) {
 
 	msg := tea.KeyPressMsg{Code: 'b', Text: "b"}
 	_, cmd := m.Update(msg)
-	// When not connected, 'b' should not produce an openBrowser command.
-	// The viewport update may still return a command, so we just verify
-	// the model didn't crash.
 	_ = cmd
+}
+
+func TestModel_TabTogglesFocus(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.showSplit = true
+	m.focus = panelRight
+
+	msg := tea.KeyPressMsg{Code: tea.KeyTab, Text: "tab"}
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+	assert.Equal(t, panelLeft, model.focus)
+
+	// Tab again to go back
+	newM, _ = model.Update(msg)
+	model = newM.(Model)
+	assert.Equal(t, panelRight, model.focus)
+}
+
+func TestModel_TabNoopInNarrowMode(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.showSplit = false
+	m.focus = panelRight
+
+	msg := tea.KeyPressMsg{Code: tea.KeyTab, Text: "tab"}
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+	assert.Equal(t, panelRight, model.focus) // unchanged
+}
+
+func TestModel_SyncLayout_NarrowMode(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.width = 80
+	m.height = 24
+	m.syncLayout()
+
+	assert.False(t, m.showSplit)
+}
+
+func TestModel_SyncLayout_SplitMode(t *testing.T) {
+	clients := []*tunnel.Client{
+		tunnel.NewClient(tunnel.ClientOptions{Subdomain: "a", Port: 3000}),
+	}
+	m := NewModel(clients, []int{3000})
+	m.width = 120
+	m.height = 24
+	m.syncLayout()
+
+	assert.True(t, m.showSplit)
+	assert.True(t, m.ready)
+}
+
+func TestRenderTunnelCard_Connected(t *testing.T) {
+	card := RenderTunnelCard("https://test.xpose.dev", 3000, 3600, "connected", "", "")
+	assert.Contains(t, card, "Connected")
+	assert.Contains(t, card, "https://test.xpose.dev")
+	assert.Contains(t, card, "localhost:3000")
+	assert.Contains(t, card, "1h 0m 0s")
+}
+
+func TestRenderTunnelCard_Connecting(t *testing.T) {
+	card := RenderTunnelCard("", 3000, 0, "connecting", "", "⣾")
+	assert.Contains(t, card, "Connecting")
+	assert.Contains(t, card, "3000")
+}
+
+func TestRenderCompactView_MultipleTunnels(t *testing.T) {
+	data := []tunnelViewData{
+		{port: 3000, status: "connected", url: "https://a.xpose.dev", ttlRemaining: 3600},
+		{port: 8080, status: "connecting", url: "", ttlRemaining: 0},
+	}
+	view := RenderCompactView(data, "⣾")
+	assert.Contains(t, view, "https://a.xpose.dev")
+	assert.Contains(t, view, "Connecting")
+}
+
+func TestHyperlink(t *testing.T) {
+	result := Hyperlink("https://example.com", "example")
+	assert.Contains(t, result, "\033]8;;https://example.com\033\\")
+	assert.Contains(t, result, "example")
+	assert.True(t, strings.HasSuffix(result, "\033]8;;\033\\"))
 }
 
 func TestRenderBanner_DefaultWidth(t *testing.T) {
@@ -222,4 +309,17 @@ func TestRenderBanner_DefaultWidth(t *testing.T) {
 	assert.Contains(t, banner, "xpose")
 	// Should not contain max body line when maxBodySizeBytes is 0
 	assert.NotContains(t, banner, "Max body")
+}
+
+func TestInjectBorderTitle(t *testing.T) {
+	// Simulate a rendered box with a top border
+	topBorder := "╭──────────────────────────╮"
+	body := "│ content                  │"
+	bottom := "╰──────────────────────────╯"
+	rendered := topBorder + "\n" + body + "\n" + bottom
+
+	result := injectBorderTitle(rendered, " Title ")
+	lines := strings.SplitN(result, "\n", 2)
+	assert.Contains(t, lines[0], "Title")
+	assert.True(t, strings.HasPrefix(lines[0], "╭"))
 }

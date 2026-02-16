@@ -12,6 +12,8 @@ export interface AuthAckMessage {
   subdomain: string;
   url: string;
   ttl: number;
+  /** Actual seconds remaining on the alarm (may be less than ttl on resume) */
+  remainingTtl: number;
   sessionId: string;
   maxBodySizeBytes: number;
 }
@@ -64,6 +66,36 @@ export interface ErrorMessage {
   status?: number;
 }
 
+// ---- WebSocket relay messages (for proxying browser WS through tunnel) ----
+
+export interface WsUpgradeMessage {
+  type: "ws-upgrade";
+  streamId: string;
+  path: string;
+  headers: Record<string, string>;
+}
+
+export interface WsUpgradeAckMessage {
+  type: "ws-upgrade-ack";
+  streamId: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface WsFrameMessage {
+  type: "ws-frame";
+  streamId: string;
+  /** "text" or "binary" */
+  frameType: "text" | "binary";
+}
+
+export interface WsCloseMessage {
+  type: "ws-close";
+  streamId: string;
+  code: number;
+  reason: string;
+}
+
 export type TunnelMessage =
   | AuthMessage
   | AuthAckMessage
@@ -74,7 +106,11 @@ export type TunnelMessage =
   | HttpResponseEndMessage
   | PingMessage
   | PongMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | WsUpgradeMessage
+  | WsUpgradeAckMessage
+  | WsFrameMessage
+  | WsCloseMessage;
 
 export function isTunnelMessage(data: unknown): data is TunnelMessage {
   return (

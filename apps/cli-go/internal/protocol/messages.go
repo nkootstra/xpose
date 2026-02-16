@@ -23,6 +23,7 @@ type AuthAckMessage struct {
 	Subdomain        string `json:"subdomain"`
 	URL              string `json:"url"`
 	TTL              int    `json:"ttl"`
+	RemainingTTL     int    `json:"remainingTtl"`
 	SessionID        string `json:"sessionId"`
 	MaxBodySizeBytes int    `json:"maxBodySizeBytes"`
 }
@@ -81,6 +82,40 @@ type ErrorMessage struct {
 	Message   string `json:"message"`
 	RequestID string `json:"requestId,omitempty"`
 	Status    int    `json:"status,omitempty"`
+}
+
+// ---- WebSocket relay messages ----
+
+// WsUpgradeMessage is sent by the server to ask the CLI to open a local WS connection.
+type WsUpgradeMessage struct {
+	Type     string            `json:"type"`
+	StreamID string            `json:"streamId"`
+	Path     string            `json:"path"`
+	Headers  map[string]string `json:"headers"`
+}
+
+// WsUpgradeAckMessage is sent by the CLI to confirm or reject a WS upgrade.
+type WsUpgradeAckMessage struct {
+	Type     string `json:"type"`
+	StreamID string `json:"streamId"`
+	OK       bool   `json:"ok"`
+	Error    string `json:"error,omitempty"`
+}
+
+// WsFrameMessage signals a WebSocket frame relay. The actual payload follows
+// as a binary frame using the standard binary encoding (streamId prefix + body).
+type WsFrameMessage struct {
+	Type      string `json:"type"`
+	StreamID  string `json:"streamId"`
+	FrameType string `json:"frameType"` // "text" or "binary"
+}
+
+// WsCloseMessage signals that one side of a relayed WebSocket has closed.
+type WsCloseMessage struct {
+	Type     string `json:"type"`
+	StreamID string `json:"streamId"`
+	Code     int    `json:"code"`
+	Reason   string `json:"reason"`
 }
 
 // ParseTextMessage parses a raw JSON message into its concrete message struct.
@@ -158,6 +193,34 @@ func ParseTextMessage(raw []byte) (any, error) {
 
 	case "error":
 		var msg ErrorMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return nil, err
+		}
+		return &msg, nil
+
+	case "ws-upgrade":
+		var msg WsUpgradeMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return nil, err
+		}
+		return &msg, nil
+
+	case "ws-upgrade-ack":
+		var msg WsUpgradeAckMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return nil, err
+		}
+		return &msg, nil
+
+	case "ws-frame":
+		var msg WsFrameMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return nil, err
+		}
+		return &msg, nil
+
+	case "ws-close":
+		var msg WsCloseMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			return nil, err
 		}

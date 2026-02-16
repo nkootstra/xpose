@@ -76,6 +76,12 @@ type Client struct {
 	oversizedRequestIDs    map[string]struct{}
 	pendingRequestMeta     map[string]*protocol.HttpRequestMessage
 	cancelFunc             context.CancelFunc
+
+	// WebSocket relay
+	wsRelayMgr *wsRelayManager
+	// pendingWsFrameTypes tracks the expected frame type for the next binary
+	// frame on a given streamId (set by a ws-frame text message).
+	pendingWsFrameTypes map[string]string // streamId -> "text" or "binary"
 }
 
 // NewClient creates a new tunnel client.
@@ -83,6 +89,11 @@ func NewClient(opts ClientOptions) *Client {
 	domain := opts.Domain
 	if domain == "" {
 		domain = protocol.DefaultPublicDomain
+	}
+
+	host := opts.Host
+	if host == "" {
+		host = "localhost"
 	}
 
 	return &Client{
@@ -94,6 +105,8 @@ func NewClient(opts ClientOptions) *Client {
 		requestBodySizes:    make(map[string]int),
 		oversizedRequestIDs: make(map[string]struct{}),
 		pendingRequestMeta:  make(map[string]*protocol.HttpRequestMessage),
+		wsRelayMgr:          newWsRelayManager(host, opts.Port),
+		pendingWsFrameTypes: make(map[string]string),
 	}
 }
 
@@ -109,6 +122,9 @@ func (c *Client) Disconnect() {
 	conn := c.conn
 	cancel := c.cancelFunc
 	c.mu.Unlock()
+
+	// Close all WS relay connections
+	c.wsRelayMgr.closeAll()
 
 	if conn != nil {
 		conn.Close(websocket.StatusNormalClosure, "Client disconnect")
@@ -221,12 +237,19 @@ func (c *Client) handleTextMessage(ctx context.Context, conn *websocket.Conn, da
 		conn.SetReadLimit(int64(c.maxBodySizeBytes) + int64(protocol.RequestIDLength) + 1024)
 		c.mu.Unlock()
 
+		// Use remainingTtl for the countdown if the server provided it
+		// (e.g. on session resume the alarm wasn't reset).
+		displayTTL := msg.RemainingTTL
+		if displayTTL <= 0 {
+			displayTTL = msg.TTL
+		}
+
 		c.emit(TunnelEvent{Type: "status", Status: StatusConnected})
 		c.emit(TunnelEvent{
 			Type: "authenticated",
 			Authenticated: &AuthenticatedInfo{
 				URL:              msg.URL,
-				TTL:              msg.TTL,
+				TTL:              displayTTL,
 				SessionID:        msg.SessionID,
 				MaxBodySizeBytes: msg.MaxBodySizeBytes,
 			},
@@ -307,6 +330,20 @@ func (c *Client) handleTextMessage(ctx context.Context, conn *websocket.Conn, da
 
 	case *protocol.PingMsg:
 		c.sendJSON(ctx, conn, &protocol.PongMsg{Type: "pong"})
+
+	case *protocol.WsUpgradeMessage:
+		// Server asks us to open a local WebSocket connection
+		go c.wsRelayMgr.handleUpgrade(ctx, conn, msg, c.sendJSON)
+
+	case *protocol.WsFrameMessage:
+		// A WS frame header from the server. The actual payload follows as a binary frame.
+		// Store the frame type so handleBinaryFrame can dispatch correctly.
+		c.mu.Lock()
+		c.pendingWsFrameTypes[msg.StreamID] = msg.FrameType
+		c.mu.Unlock()
+
+	case *protocol.WsCloseMessage:
+		c.wsRelayMgr.handleClose(msg)
 	}
 }
 
@@ -316,6 +353,24 @@ func (c *Client) handleBinaryFrame(data []byte) {
 		return
 	}
 
+	// Check if this is a WS relay frame
+	c.mu.Lock()
+	frameType, isWsRelay := c.pendingWsFrameTypes[requestID]
+	if isWsRelay {
+		delete(c.pendingWsFrameTypes, requestID)
+	}
+	c.mu.Unlock()
+
+	if isWsRelay {
+		c.wsRelayMgr.handleFrame(&protocol.WsFrameMessage{
+			Type:      "ws-frame",
+			StreamID:  requestID,
+			FrameType: frameType,
+		}, body)
+		return
+	}
+
+	// Otherwise it's an HTTP request body chunk
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

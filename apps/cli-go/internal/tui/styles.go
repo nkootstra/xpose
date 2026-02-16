@@ -33,6 +33,30 @@ var (
 	}
 )
 
+// Panel border styles
+func focusedBorderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("4")) // blue
+}
+
+func blurredBorderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")) // gray
+}
+
+// panelTitleStyle renders a panel title (placed in the border top line).
+var panelTitleStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("4")).
+	Bold(true)
+
+// Hyperlink wraps displayText in an OSC 8 hyperlink escape sequence so
+// terminals that support it render it as a clickable link.
+func Hyperlink(url, displayText string) string {
+	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, displayText)
+}
+
 // StyledMethod returns a method string padded to 7 chars and colored.
 func StyledMethod(method string) string {
 	padded := fmt.Sprintf("%-7s", method)

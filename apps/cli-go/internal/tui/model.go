@@ -11,7 +11,18 @@ import (
 	"github.com/nkootstra/xpose/internal/tunnel"
 )
 
-const maxTrafficEntries = 100
+const (
+	maxTrafficEntries = 100
+	minSplitWidth     = 100
+	leftPanelPct      = 35
+)
+
+type focusedPanel int
+
+const (
+	panelLeft focusedPanel = iota
+	panelRight
+)
 
 // tunnelState tracks the state of a single tunnel connection.
 type tunnelState struct {
@@ -27,15 +38,19 @@ type tunnelState struct {
 
 // Model is the root Bubble Tea model for the xpose TUI.
 type Model struct {
-	clients  []*tunnel.Client
-	tunnels  []tunnelState
-	traffic  []string
-	spinner  spinner.Model
-	viewport viewport.Model
-	ready    bool
-	quitting bool
-	width    int
-	height   int
+	clients   []*tunnel.Client
+	tunnels   []tunnelState
+	traffic   []string
+	spinner   spinner.Model
+	trafficVP viewport.Model // right panel: scrollable traffic log
+	ready     bool
+	quitting  bool
+	width     int
+	height    int
+
+	// Split-pane state
+	focus     focusedPanel
+	showSplit bool
 }
 
 // NewModel creates a new TUI model with the given tunnel clients and ports.
@@ -57,94 +72,98 @@ func NewModel(clients []*tunnel.Client, ports []int) Model {
 		tunnels: tunnels,
 		traffic: make([]string, 0, maxTrafficEntries),
 		spinner: s,
+		focus:   panelRight, // default focus on traffic
 	}
 }
 
-// renderHeader builds the header string (banner area).
-func (m Model) renderHeader() string {
-	var b strings.Builder
-
-	for _, t := range m.tunnels {
-		switch t.status {
-		case tunnel.StatusConnected:
-			b.WriteString(RenderBanner(t.url, t.port, t.ttlRemaining, t.maxBody, m.width))
-
-		case tunnel.StatusConnecting:
-			b.WriteString(fmt.Sprintf("\n  %s %s\n",
-				m.spinner.View(),
-				StyledTunnelStatus("connecting"),
-			))
-
-		case tunnel.StatusReconnecting:
-			b.WriteString(fmt.Sprintf("\n  %s %s\n",
-				m.spinner.View(),
-				StyledTunnelStatus("reconnecting"),
-			))
-
-		case tunnel.StatusDisconnected:
-			b.WriteString(fmt.Sprintf("\n  %s\n", StyledTunnelStatus("disconnected")))
-
-		case tunnel.StatusExpired:
-			b.WriteString(fmt.Sprintf("\n  %s\n", StyledTunnelStatus("expired")))
-		}
-
-		if t.lastError != "" && t.status != tunnel.StatusConnected {
-			b.WriteString(fmt.Sprintf("  %s %s\n",
-				errorStyle.Render("Error:"),
-				t.lastError,
-			))
+// tunnelViewDataSlice converts internal tunnel state to view data for rendering.
+func (m Model) tunnelViewDataSlice() []tunnelViewData {
+	data := make([]tunnelViewData, len(m.tunnels))
+	for i, t := range m.tunnels {
+		data[i] = tunnelViewData{
+			port:         t.port,
+			status:       string(t.status),
+			url:          t.url,
+			ttlRemaining: t.ttlRemaining,
+			lastError:    t.lastError,
 		}
 	}
+	return data
+}
 
+// renderLeftPanel builds the left panel content (tunnel info cards).
+func (m Model) renderLeftPanel() string {
+	var b strings.Builder
+	for i, t := range m.tunnels {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(RenderTunnelCard(
+			t.url, t.port, t.ttlRemaining,
+			string(t.status), t.lastError,
+			m.spinner.View(),
+		))
+	}
 	return b.String()
 }
 
 // renderFooter builds the footer string.
 func (m Model) renderFooter() string {
-	if !m.ready || len(m.traffic) == 0 {
-		return dimStyle.Render("  q quit | b open browser | arrows/pgup/pgdn scroll")
+	if m.showSplit {
+		hint := "  q quit | b open browser | tab switch panel"
+		if m.focus == panelRight && m.ready && len(m.traffic) > 0 {
+			pct := m.trafficVP.ScrollPercent()
+			hint += fmt.Sprintf(" | ↑↓ scroll | %3.0f%%", pct*100)
+		}
+		return dimStyle.Render(hint)
 	}
-	pct := m.viewport.ScrollPercent()
-	return dimStyle.Render(fmt.Sprintf("  q quit | b open browser | arrows/pgup/pgdn scroll | %3.0f%%", pct*100))
+	return dimStyle.Render("  q quit | b open browser")
 }
 
-// countLines counts the number of newline-terminated lines in a string.
-func countLines(s string) int {
-	if s == "" {
-		return 0
-	}
-	return strings.Count(s, "\n") + 1
-}
-
-// syncViewportSize recalculates the viewport dimensions based on the current
-// header height and terminal size. Must be called whenever the header might
-// have changed (window resize, status change, authentication, tick).
-func (m *Model) syncViewportSize() {
+// syncLayout recalculates viewport dimensions based on terminal size.
+func (m *Model) syncLayout() {
 	if m.width == 0 || m.height == 0 {
 		return
 	}
 
-	header := m.renderHeader()
-	hLines := countLines(header)
-	const fLines = 1 // footer is always 1 line
+	m.showSplit = m.width >= minSplitWidth
 
-	vpHeight := m.height - hLines - fLines
+	if !m.showSplit {
+		// Narrow mode: no viewport needed, just tunnel cards
+		return
+	}
+
+	// Split mode: left panel (tunnel info) + right panel (traffic viewport)
+	const footerLines = 1
+	borderV := 2 // top + bottom border
+	borderH := 2 // left + right border
+
+	leftWidth := m.width * leftPanelPct / 100
+	rightWidth := m.width - leftWidth
+
+	bodyHeight := m.height - footerLines
+
+	vpWidth := rightWidth - borderH
+	vpHeight := bodyHeight - borderV
+	if vpWidth < 1 {
+		vpWidth = 1
+	}
 	if vpHeight < 1 {
 		vpHeight = 1
 	}
 
 	if !m.ready {
-		m.viewport = viewport.New(
-			viewport.WithWidth(m.width),
+		m.trafficVP = viewport.New(
+			viewport.WithWidth(vpWidth),
 			viewport.WithHeight(vpHeight),
 		)
-		m.viewport.MouseWheelEnabled = true
-		m.viewport.MouseWheelDelta = 3
+		m.trafficVP.MouseWheelEnabled = true
+		m.trafficVP.MouseWheelDelta = 3
 		m.updateViewportContent()
 		m.ready = true
 	} else {
-		m.viewport.SetWidth(m.width)
-		m.viewport.SetHeight(vpHeight)
+		m.trafficVP.SetWidth(vpWidth)
+		m.trafficVP.SetHeight(vpHeight)
 	}
 }
 
@@ -179,6 +198,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, openBrowser(t.url)
 				}
 			}
+		case "tab":
+			if m.showSplit {
+				if m.focus == panelLeft {
+					m.focus = panelRight
+				} else {
+					m.focus = panelLeft
+				}
+			}
 		}
 
 	case openBrowserMsg:
@@ -187,7 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.syncViewportSize()
+		m.syncLayout()
 
 	case tickMsg:
 		for i := range m.tunnels {
@@ -195,8 +222,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tunnels[i].ttlRemaining--
 			}
 		}
-		// Header changes on tick (TTL updates), so re-sync viewport height.
-		m.syncViewportSize()
 		cmds = append(cmds, tickEvery())
 
 	case spinner.TickMsg:
@@ -211,7 +236,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch ev.Type {
 		case "status":
 			m.tunnels[idx].status = ev.Status
-			m.syncViewportSize()
 
 		case "authenticated":
 			if ev.Authenticated != nil {
@@ -221,7 +245,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tunnels[idx].maxBody = ev.Authenticated.MaxBodySizeBytes
 				m.tunnels[idx].sessionID = ev.Authenticated.SessionID
 				m.tunnels[idx].status = tunnel.StatusConnected
-				m.syncViewportSize()
 			}
 
 		case "traffic":
@@ -241,8 +264,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.traffic) > maxTrafficEntries {
 					m.traffic = m.traffic[len(m.traffic)-maxTrafficEntries:]
 				}
-				m.updateViewportContent()
-				m.viewport.GotoBottom()
+				if m.ready {
+					m.updateViewportContent()
+					m.trafficVP.GotoBottom()
+				}
 			}
 
 		case "error":
@@ -268,10 +293,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, listenForEvents(m.clients[idx], idx))
 	}
 
-	// Forward to viewport for scroll handling
-	if m.ready {
+	// Forward to viewport for scroll handling (only when focused on traffic)
+	if m.ready && m.showSplit && m.focus == panelRight {
 		var vpCmd tea.Cmd
-		m.viewport, vpCmd = m.viewport.Update(msg)
+		m.trafficVP, vpCmd = m.trafficVP.Update(msg)
 		cmds = append(cmds, vpCmd)
 	}
 
@@ -285,35 +310,28 @@ func (m *Model) updateViewportContent() {
 	}
 	content := strings.Join(m.traffic, "\n")
 	if len(m.traffic) == 0 {
-		content = dimStyle.Render("  Waiting for requests...")
+		content = dimStyle.Render(" Waiting for requests...")
 	}
-	m.viewport.SetContent(content)
+	m.trafficVP.SetContent(content)
 }
 
-// View renders the TUI display. The output is constrained to exactly m.height
-// lines so the header stays pinned at the top and the footer at the bottom.
+// View renders the TUI display.
 func (m Model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
 
-	header := m.renderHeader()
-	footer := m.renderFooter()
+	var content string
 
-	var body string
-	if m.ready {
-		body = m.viewport.View()
+	if !m.showSplit {
+		// Narrow mode: compact tunnel cards only, no traffic
+		content = m.renderNarrowView()
 	} else {
-		body = dimStyle.Render("  Initializing...")
+		// Split mode: left (tunnels) + right (traffic) panels
+		content = m.renderSplitView()
 	}
 
-	// Assemble: header + viewport body + footer, constrained to terminal height.
-	// Use lipgloss.PlaceVertical to ensure the output is exactly m.height lines
-	// so Bubble Tea never scrolls the alt screen buffer.
-	content := lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
-
 	if m.height > 0 {
-		// Pad or truncate to exactly m.height lines.
 		content = lipgloss.PlaceVertical(m.height, lipgloss.Top, content)
 	}
 
@@ -321,6 +339,123 @@ func (m Model) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// renderNarrowView renders the compact single-column view for narrow terminals.
+func (m Model) renderNarrowView() string {
+	cards := RenderCompactView(m.tunnelViewDataSlice(), m.spinner.View())
+	footer := m.renderFooter()
+
+	return lipgloss.JoinVertical(lipgloss.Left, cards, "", footer)
+}
+
+// renderSplitView renders the two-panel layout for wide terminals.
+func (m Model) renderSplitView() string {
+	const footerLines = 1
+	borderV := 2 // top + bottom border
+	borderH := 2 // left + right border
+
+	leftWidth := m.width * leftPanelPct / 100
+	rightWidth := m.width - leftWidth
+	bodyHeight := m.height - footerLines
+
+	// Build left panel content
+	leftContent := m.renderLeftPanel()
+
+	// Build right panel content
+	var rightContent string
+	if m.ready {
+		rightContent = m.trafficVP.View()
+	} else {
+		rightContent = dimStyle.Render(" Initializing...")
+	}
+
+	// Choose border styles based on focus
+	leftStyle := blurredBorderStyle()
+	rightStyle := blurredBorderStyle()
+	leftTitle := dimStyle.Render(" Tunnels ")
+	rightTitle := dimStyle.Render(" Traffic ")
+
+	if m.focus == panelLeft {
+		leftStyle = focusedBorderStyle()
+		leftTitle = panelTitleStyle.Render(" Tunnels ")
+	} else {
+		rightStyle = focusedBorderStyle()
+		rightTitle = panelTitleStyle.Render(" Traffic ")
+	}
+
+	// Apply dimensions to panel styles.
+	// Inner content dimensions = outer - border.
+	leftInnerW := leftWidth - borderH
+	leftInnerH := bodyHeight - borderV
+	rightInnerW := rightWidth - borderH
+	rightInnerH := bodyHeight - borderV
+
+	if leftInnerW < 1 {
+		leftInnerW = 1
+	}
+	if leftInnerH < 1 {
+		leftInnerH = 1
+	}
+	if rightInnerW < 1 {
+		rightInnerW = 1
+	}
+	if rightInnerH < 1 {
+		rightInnerH = 1
+	}
+
+	leftPanel := leftStyle.
+		Width(leftInnerW).
+		Height(leftInnerH).
+		BorderTop(true).
+		BorderBottom(true).
+		BorderLeft(true).
+		BorderRight(true).
+		Render(leftContent)
+
+	// Inject panel title into top border of left panel
+	leftPanel = injectBorderTitle(leftPanel, leftTitle)
+
+	rightPanel := rightStyle.
+		Width(rightInnerW).
+		Height(rightInnerH).
+		BorderTop(true).
+		BorderBottom(true).
+		BorderLeft(true).
+		BorderRight(true).
+		Render(rightContent)
+
+	rightPanel = injectBorderTitle(rightPanel, rightTitle)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+	footer := m.renderFooter()
+
+	return lipgloss.JoinVertical(lipgloss.Left, body, footer)
+}
+
+// injectBorderTitle replaces the beginning of the first line (after the corner)
+// with a styled title string, producing a "─ Title ─────" border top.
+func injectBorderTitle(rendered string, title string) string {
+	lines := strings.SplitN(rendered, "\n", 2)
+	if len(lines) == 0 {
+		return rendered
+	}
+
+	topLine := lines[0]
+	// The top border starts with a corner char (e.g. "╭") followed by "─" chars.
+	// We replace chars 1..1+titleWidth with the title.
+	runes := []rune(topLine)
+	titleRunes := []rune(title)
+
+	if len(runes) < len(titleRunes)+2 {
+		return rendered // too narrow for title
+	}
+
+	// Place title after the corner char
+	copy(runes[1:], titleRunes)
+
+	lines[0] = string(runes)
+	return strings.Join(lines, "\n")
 }
 
 // ViewString returns the View content as a plain string (for testing).
