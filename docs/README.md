@@ -29,7 +29,8 @@ xpose 3000
 - Built entirely on Cloudflare's global edge network
 - No dedicated servers to manage - fully serverless
 - Install via Homebrew (`brew install nkootstra/tap/xpose`)
-- Beautiful terminal UI with live traffic logging
+- Full-screen TUI with scrollable traffic log, live TTL countdown, and mouse support
+- Session resume - pick up where you left off with `xpose -r` (10-minute window)
 - Auto-reconnection with exponential backoff
 - Configurable TTL (default 4 hours)
 - Turborepo port auto-discovery (`--from-turbo`)
@@ -60,7 +61,12 @@ xpose 3000 --ttl 7200
 
 # Custom public domain (for self-hosting)
 xpose 3000 --domain tunnel.example.com
+
+# Resume the previous session (within 10 minutes of exit)
+xpose -r
 ```
+
+When you exit the TUI, your session is saved automatically. Resume within 10 minutes using `xpose -r` to reconnect to the same URLs.
 
 Current default request/response body limit is `5MB` (configurable in the worker via `MAX_BODY_SIZE_BYTES`).
 

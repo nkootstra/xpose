@@ -62,6 +62,19 @@ function UsagePage() {
       </p>
 
       <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
+        Session resume
+      </h2>
+      <p className="mb-4 leading-relaxed text-gray-400">
+        When you exit the TUI, your session is saved automatically. Resume
+        within 10 minutes to reconnect to the same tunnel URLs:
+      </p>
+      <CodeBlock code="xpose -r" />
+      <p className="mt-2 text-sm text-gray-400">
+        This is useful when you need to restart the CLI without changing the
+        URLs you shared. The session file is stored in ~/.config/xpose/.
+      </p>
+
+      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
         Turborepo integration
       </h2>
       <p className="mb-4 leading-relaxed text-gray-400">

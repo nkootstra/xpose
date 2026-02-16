@@ -78,12 +78,28 @@ function ConfigurationPage() {
               <td className="py-2 pr-4">Turborepo filter for package selection</td>
               <td className="py-2">&mdash;</td>
             </tr>
-            <tr>
+            <tr className="border-b border-gray-800/50">
               <td className="py-2 pr-4 font-mono text-xs text-gray-300">
                 --turbo-path
               </td>
               <td className="py-2 pr-4">Path to the Turborepo project root</td>
               <td className="py-2">Current directory</td>
+            </tr>
+            <tr className="border-b border-gray-800/50">
+              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
+                -r, --resume
+              </td>
+              <td className="py-2 pr-4">
+                Resume the previous tunnel session (same URLs, within 10 minutes of exit)
+              </td>
+              <td className="py-2">false</td>
+            </tr>
+            <tr>
+              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
+                --domain
+              </td>
+              <td className="py-2 pr-4">Public tunnel domain (for self-hosting)</td>
+              <td className="py-2">xpose.dev</td>
             </tr>
           </tbody>
         </table>
