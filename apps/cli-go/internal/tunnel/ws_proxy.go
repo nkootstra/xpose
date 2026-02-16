@@ -4,12 +4,25 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/coder/websocket"
 
 	"github.com/nkootstra/xpose/internal/protocol"
 )
+
+// splitCSV splits a comma-separated header value into trimmed tokens.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
 
 // wsRelay manages the relay of a single browser WebSocket connection through
 // the tunnel to a local WebSocket server.
@@ -47,13 +60,19 @@ func (mgr *wsRelayManager) handleUpgrade(
 
 	// Build request headers (forward relevant ones)
 	reqHeaders := make(http.Header)
+	var subprotocols []string
 	for k, v := range msg.Headers {
 		switch k {
 		case "host", "upgrade", "connection",
 			"sec-websocket-key", "sec-websocket-version",
-			"sec-websocket-extensions", "sec-websocket-protocol":
+			"sec-websocket-extensions":
 			// Don't forward WebSocket handshake headers — the local dial creates its own
 			continue
+		case "sec-websocket-protocol":
+			// Parse subprotocols and pass them via DialOptions.Subprotocols
+			for _, p := range splitCSV(v) {
+				subprotocols = append(subprotocols, p)
+			}
 		default:
 			reqHeaders.Set(k, v)
 		}
@@ -61,7 +80,8 @@ func (mgr *wsRelayManager) handleUpgrade(
 
 	dialCtx, dialCancel := context.WithCancel(ctx)
 	localConn, _, err := websocket.Dial(dialCtx, localURL, &websocket.DialOptions{
-		HTTPHeader: reqHeaders,
+		HTTPHeader:   reqHeaders,
+		Subprotocols: subprotocols,
 	})
 	if err != nil {
 		dialCancel()

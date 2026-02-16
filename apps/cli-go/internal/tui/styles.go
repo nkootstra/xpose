@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -54,7 +55,7 @@ var panelTitleStyle = lipgloss.NewStyle().
 // Hyperlink wraps displayText in an OSC 8 hyperlink escape sequence so
 // terminals that support it render it as a clickable link.
 func Hyperlink(url, displayText string) string {
-	return fmt.Sprintf("\033]8;;%s\033\\%s\033]8;;\033\\", url, displayText)
+	return ansi.SetHyperlink(url) + displayText + ansi.ResetHyperlink()
 }
 
 // StyledMethod returns a method string padded to 7 chars and colored.

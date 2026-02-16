@@ -299,9 +299,9 @@ func TestRenderCompactView_MultipleTunnels(t *testing.T) {
 
 func TestHyperlink(t *testing.T) {
 	result := Hyperlink("https://example.com", "example")
-	assert.Contains(t, result, "\033]8;;https://example.com\033\\")
+	assert.Contains(t, result, "\x1b]8;;https://example.com\x07")
 	assert.Contains(t, result, "example")
-	assert.True(t, strings.HasSuffix(result, "\033]8;;\033\\"))
+	assert.True(t, strings.HasSuffix(result, "\x1b]8;;\x07"))
 }
 
 func TestRenderBanner_DefaultWidth(t *testing.T) {

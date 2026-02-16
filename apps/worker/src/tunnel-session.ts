@@ -72,8 +72,6 @@ function payloadTooLargeResponse(kind: "Request" | "Response", maxBytes: number)
 
 export class TunnelSession extends DurableObject<Env> {
   private pendingRequests = new Map<string, PendingRequest>();
-  /** Maps streamId -> browser WebSocket for WS relay. */
-  private browserWebSockets = new Map<string, WebSocket>();
   /** Maps streamId -> resolve function for pending ws-upgrade-ack. */
   private pendingWsUpgrades = new Map<string, {
     resolve: (response: Response) => void;
@@ -115,6 +113,16 @@ export class TunnelSession extends DurableObject<Env> {
 
   private hasCliSocket(): boolean {
     return this.getCliSocket() !== null;
+  }
+
+  /** Look up a browser WebSocket by streamId from the runtime's tracked sockets.
+   *  This is hibernation-safe — it doesn't depend on in-memory maps. */
+  private getBrowserSocket(streamId: string): WebSocket | null {
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = this.getAttachment(ws);
+      if (att?.role === "browser" && att.streamId === streamId) return ws;
+    }
+    return null;
   }
 
   // ---- Fetch handler ----
@@ -179,8 +187,6 @@ export class TunnelSession extends DurableObject<Env> {
       streamId,
     } satisfies WsAttachment);
 
-    this.browserWebSockets.set(streamId, browserServer);
-
     // Collect request headers
     const headers: Record<string, string> = {};
     request.headers.forEach((value, key) => {
@@ -198,14 +204,26 @@ export class TunnelSession extends DurableObject<Env> {
         } satisfies TunnelMessage),
       );
     } catch {
-      this.browserWebSockets.delete(streamId);
       return new Response("Tunnel not connected", {
         status: 502,
         headers: { "retry-after": "5" },
       });
     }
 
-    return new Response(null, { status: 101, webSocket: browserClient });
+    // Echo Sec-WebSocket-Protocol back to the browser so the handshake succeeds.
+    // Without this, browsers reject the upgrade when they sent a subprotocol header
+    // (e.g. Vite HMR sends "vite-hmr").
+    const responseHeaders = new Headers();
+    const requestedProtocol = request.headers.get("sec-websocket-protocol");
+    if (requestedProtocol) {
+      responseHeaders.set("sec-websocket-protocol", requestedProtocol.split(",")[0].trim());
+    }
+
+    return new Response(null, {
+      status: 101,
+      webSocket: browserClient,
+      headers: responseHeaders,
+    });
   }
 
   // ---- HTTP proxy ----
@@ -375,7 +393,7 @@ export class TunnelSession extends DurableObject<Env> {
       const { requestId, body } = decodeBinaryFrame(message);
 
       // Check if this is a WS relay binary frame
-      const browserWs = this.browserWebSockets.get(requestId);
+      const browserWs = this.getBrowserSocket(requestId);
       if (browserWs) {
         try {
           if ((browserWs as any).__nextFrameIsText) {
@@ -550,7 +568,7 @@ export class TunnelSession extends DurableObject<Env> {
       }
 
       case "ws-frame": {
-        const browserWs = this.browserWebSockets.get(msg.streamId);
+        const browserWs = this.getBrowserSocket(msg.streamId);
         if (!browserWs) break;
 
         // The actual frame data follows as a binary frame (handled in ArrayBuffer branch above).
@@ -599,19 +617,20 @@ export class TunnelSession extends DurableObject<Env> {
           // CLI already gone
         }
       }
-      this.browserWebSockets.delete(att.streamId);
       return;
     }
 
     if (att?.role === "cli") {
       // CLI disconnected — close all browser WS connections
-      for (const [streamId, browserWs] of this.browserWebSockets) {
-        try {
-          browserWs.close(1001, "Tunnel disconnected");
-        } catch {
-          // Already closed
+      for (const socket of this.ctx.getWebSockets()) {
+        const socketAtt = this.getAttachment(socket);
+        if (socketAtt?.role === "browser") {
+          try {
+            socket.close(1001, "Tunnel disconnected");
+          } catch {
+            // Already closed
+          }
         }
-        this.browserWebSockets.delete(streamId);
       }
 
       // Grace period: reject pending HTTP requests
@@ -657,8 +676,7 @@ export class TunnelSession extends DurableObject<Env> {
       ws.close(1000, "TTL expired");
     }
 
-    // Clean up all browser WS streams
-    this.browserWebSockets.clear();
+    // Clean up pending WS upgrades
     this.pendingWsUpgrades.clear();
 
     for (const [, pending] of this.pendingRequests) {
@@ -673,14 +691,13 @@ export class TunnelSession extends DurableObject<Env> {
   // ---- Helper: clean up a browser WS stream ----
 
   private cleanupBrowserStream(streamId: string, code = 1000, reason = "Stream closed") {
-    const browserWs = this.browserWebSockets.get(streamId);
+    const browserWs = this.getBrowserSocket(streamId);
     if (browserWs) {
       try {
         browserWs.close(code, reason);
       } catch {
         // Already closed
       }
-      this.browserWebSockets.delete(streamId);
     }
 
     const pendingUpgrade = this.pendingWsUpgrades.get(streamId);

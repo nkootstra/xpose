@@ -34,7 +34,9 @@ func RenderTunnelCard(url string, port int, ttlRemaining int, status string, las
 		b.WriteString(fmt.Sprintf(" %s %s\n", checkmark, statusStyles["connected"].Render("Connected to Cloudflare's edge network")))
 
 		arrow := lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render("→")
-		linkedURL := Hyperlink(url, urlStyle.Render(url))
+		// Apply the hyperlink to the plain URL, then style the whole thing.
+		// This ensures the OSC 8 params aren't contaminated by ANSI color codes.
+		linkedURL := urlStyle.Render(Hyperlink(url, url))
 		b.WriteString(fmt.Sprintf(" %s %s\n", arrow, linkedURL))
 
 		b.WriteString(fmt.Sprintf("   Forwarding to %s\n",
