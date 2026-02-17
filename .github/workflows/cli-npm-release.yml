@@ -32,11 +32,13 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: .
 
-      - name: Run tests
-        run: bun run test
+      - name: Build all packages
+        run: bunx turbo run build
+        working-directory: .
 
-      - name: Build
-        run: bun run build
+      - name: Run tests
+        run: bunx turbo run test --filter=xpose-dev
+        working-directory: .
 
       - name: Set version from tag
         run: |
