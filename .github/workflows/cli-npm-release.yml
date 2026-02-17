@@ -40,10 +40,17 @@ jobs:
         run: bunx turbo run test --filter=xpose-dev
         working-directory: .
 
-      - name: Set version from tag
+      - name: Prepare package for publish
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          npm version "$VERSION" --no-git-tag-version
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '$VERSION';
+            // Remove workspace deps — they are bundled by tsup
+            delete pkg.devDependencies['@xpose/protocol'];
+            delete pkg.devDependencies['@xpose/tunnel-core'];
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
 
       - name: Publish
         run: npm publish --access public
