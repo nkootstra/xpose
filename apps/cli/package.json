@@ -37,8 +37,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@xpose/protocol": "workspace:*",
-    "@xpose/tunnel-core": "workspace:*",
     "citty": "^0.1.6",
     "ink": "^6.7.0",
     "ink-spinner": "^5.0.0",
@@ -49,6 +47,8 @@
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/ws": "^8.5.14",
+    "@xpose/protocol": "workspace:*",
+    "@xpose/tunnel-core": "workspace:*",
     "tsup": "^8.4.0",
     "typescript": "5.9.2",
     "vitest": "^3.2.0"
