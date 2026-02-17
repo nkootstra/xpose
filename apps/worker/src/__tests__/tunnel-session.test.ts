@@ -16,19 +16,14 @@ function getStub(name = "test") {
 
 describe("TunnelSession", () => {
   describe("no CLI connected", () => {
-    it("returns 502 with Tunnel not connected", async () => {
+    it("returns 502 with branded error page", async () => {
       const stub = getStub("no-cli");
       const res = await stub.fetch("http://fake-host/some-path");
       expect(res.status).toBe(502);
+      expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
       const text = await res.text();
-      expect(text).toBe("Tunnel not connected");
-    });
-
-    it("includes retry-after header", async () => {
-      const stub = getStub("no-cli-retry");
-      const res = await stub.fetch("http://fake-host/any");
-      expect(res.status).toBe(502);
-      expect(res.headers.get("retry-after")).toBe("5");
+      expect(text).toContain("Tunnel not connected");
+      expect(text).toContain("xpose");
     });
   });
 
@@ -129,7 +124,7 @@ describe("TunnelSession", () => {
       const res = await stub.fetch("http://fake-host/check");
       expect(res.status).toBe(502);
       const text = await res.text();
-      expect(text).toBe("Tunnel not connected");
+      expect(text).toContain("Tunnel not connected");
     });
   });
 });

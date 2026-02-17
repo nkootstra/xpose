@@ -74,14 +74,16 @@ describe("Hono router", () => {
       expect(text).toContain("Tunnel not connected");
     });
 
-    it("includes retry-after header on 502", async () => {
+    it("returns branded HTML error page on 502", async () => {
       const res = await app.request(
         "https://abc123.xpose.dev/hello",
         undefined,
         { ...defaultBindings },
       );
       expect(res.status).toBe(502);
-      expect(res.headers.get("retry-after")).toBe("5");
+      expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+      const text = await res.text();
+      expect(text).toContain("Tunnel not connected");
     });
   });
 

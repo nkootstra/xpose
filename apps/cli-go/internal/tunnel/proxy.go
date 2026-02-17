@@ -54,7 +54,7 @@ func ProxyRequest(host string, port int, msg *protocol.HttpRequestMessage, body 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach localhost:%d: %w", port, err)
+		return nil, &ConnectionRefusedError{Port: port, Err: err}
 	}
 	defer resp.Body.Close()
 
@@ -85,6 +85,20 @@ func ProxyRequest(host string, port int, msg *protocol.HttpRequestMessage, body 
 		Headers: headers,
 		Body:    respBody,
 	}, nil
+}
+
+// ConnectionRefusedError indicates the local server could not be reached.
+type ConnectionRefusedError struct {
+	Port int
+	Err  error
+}
+
+func (e *ConnectionRefusedError) Error() string {
+	return fmt.Sprintf("could not connect to localhost:%d", e.Port)
+}
+
+func (e *ConnectionRefusedError) Unwrap() error {
+	return e.Err
 }
 
 // BodyTooLargeError indicates the response body exceeded the size limit.

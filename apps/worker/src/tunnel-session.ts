@@ -8,6 +8,13 @@ import {
   type TunnelMessage,
 } from "@xpose/protocol";
 import type { Env } from "./types.js";
+import {
+  tunnelNotConnected,
+  gatewayTimeout,
+  tunnelDisconnected,
+  tunnelExpired,
+  upstreamError,
+} from "./error-pages.js";
 
 interface PendingRequest {
   resolve: (response: Response) => void;
@@ -167,10 +174,7 @@ export class TunnelSession extends DurableObject<Env> {
 
   private handleBrowserWebSocketUpgrade(request: Request): Response {
     if (!this.hasCliSocket()) {
-      return new Response("Tunnel not connected", {
-        status: 502,
-        headers: { "retry-after": "5" },
-      });
+      return tunnelNotConnected();
     }
 
     const cliWs = this.getCliSocket()!;
@@ -204,10 +208,7 @@ export class TunnelSession extends DurableObject<Env> {
         } satisfies TunnelMessage),
       );
     } catch {
-      return new Response("Tunnel not connected", {
-        status: 502,
-        headers: { "retry-after": "5" },
-      });
+      return tunnelNotConnected();
     }
 
     // Echo Sec-WebSocket-Protocol back to the browser so the handshake succeeds.
@@ -259,10 +260,7 @@ export class TunnelSession extends DurableObject<Env> {
 
   private async handleProxyRequest(request: Request): Promise<Response> {
     if (!this.hasCliSocket()) {
-      return new Response("Tunnel not connected", {
-        status: 502,
-        headers: { "retry-after": "5" },
-      });
+      return tunnelNotConnected();
     }
 
     const contentLength = parseContentLength(request.headers.get("content-length"));
@@ -288,7 +286,7 @@ export class TunnelSession extends DurableObject<Env> {
     const responsePromise = new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(requestId);
-        resolve(new Response("Gateway Timeout", { status: 504 }));
+        resolve(gatewayTimeout());
       }, PROTOCOL.REQUEST_TIMEOUT_MS);
 
       this.pendingRequests.set(requestId, {
@@ -336,10 +334,7 @@ export class TunnelSession extends DurableObject<Env> {
         clearTimeout(pending.timeout);
         this.pendingRequests.delete(requestId);
       }
-      return new Response("Tunnel not connected", {
-        status: 502,
-        headers: { "retry-after": "5" },
-      });
+      return tunnelNotConnected();
     }
 
     return responsePromise;
@@ -543,7 +538,7 @@ export class TunnelSession extends DurableObject<Env> {
             clearTimeout(pending.timeout);
             this.pendingRequests.delete(msg.requestId);
             pending.resolve(
-              new Response(msg.message, { status: msg.status ?? 502 }),
+              upstreamError(msg.message, msg.status ?? 502),
             );
           }
         }
@@ -642,7 +637,7 @@ export class TunnelSession extends DurableObject<Env> {
         for (const [, pending] of this.pendingRequests) {
           clearTimeout(pending.timeout);
           pending.resolve(
-            new Response("Tunnel disconnected", { status: 502 }),
+            tunnelDisconnected(),
           );
         }
         this.pendingRequests.clear();
@@ -682,7 +677,7 @@ export class TunnelSession extends DurableObject<Env> {
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
       pending.resolve(
-        new Response("Tunnel expired", { status: 502 }),
+        tunnelExpired(),
       );
     }
     this.pendingRequests.clear();

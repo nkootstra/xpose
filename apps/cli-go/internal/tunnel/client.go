@@ -406,7 +406,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, conn *websocket.Conn, ms
 
 	if err != nil {
 		status := 502
-		errMsg := fmt.Sprintf("Failed to reach localhost:%d: %s", c.opts.Port, err.Error())
+		errMsg := fmt.Sprintf("Could not connect to localhost:%d — is your server running?", c.opts.Port)
 
 		if _, ok := err.(*BodyTooLargeError); ok {
 			status = 413

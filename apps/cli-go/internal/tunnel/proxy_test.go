@@ -88,7 +88,9 @@ func TestProxyRequest_ConnectionRefused(t *testing.T) {
 	}, nil, 5*1024*1024)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to reach localhost:1")
+	assert.Contains(t, err.Error(), "could not connect to localhost:1")
+	var connErr *ConnectionRefusedError
+	assert.ErrorAs(t, err, &connErr)
 }
 
 func TestProxyRequest_OversizedResponse(t *testing.T) {
