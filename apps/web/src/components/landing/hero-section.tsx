@@ -98,11 +98,12 @@ export function HeroSection() {
             transition={{ ...SPRING_ENTRANCE }}
             className="mt-8 flex items-center gap-3"
           >
-            <Button render={<Link to={DOCS_URL} />}>
+            <Button nativeButton={false} render={<Link to={DOCS_URL} />}>
               Get Started
             </Button>
             <Button
               variant="outline"
+              nativeButton={false}
               render={
                 <a
                   href={GITHUB_URL}

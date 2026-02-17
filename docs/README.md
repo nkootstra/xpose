@@ -9,28 +9,29 @@ For production deployment and release setup, see `docs/PRODUCTION_SETUP.md`.
 ## Quick Start
 
 ```bash
-# Install via Homebrew
-brew install nkootstra/tap/xpose
-
-# Expose a local server
-xpose 3000
+# Run directly with npx — no install needed
+npx xpose-dev 3000
 ```
 
 ```
-  xpose
-
-  Forwarding    https://k3x9m2pw4a6b.xpose.dev -> localhost:3000
-  TTL           4h 0m 0s remaining
-  Status        Connected
+  ╭ Tunnels ───────────────────╮╭ Traffic ──────────────────────────╮
+  │                            ││                                   │
+  │  ✓ Connected               ││  14:32:07  GET  /          200 12ms│
+  │  → https://k3x9m.xpose.dev││  14:32:08  GET  /main.css  200  4ms│
+  │    Forwarding localhost:3000│  14:32:09  POST /api/hook  201 87ms│
+  │    TTL: 3h 59m 48s         ││                                   │
+  │                            ││                                   │
+  ╰────────────────────────────╯╰───────────────────────────────────╯
+  q quit | b open browser | tab switch panel | ↑↓ scroll
 ```
 
 ## Features
 
 - Built entirely on Cloudflare's global edge network
 - No dedicated servers to manage - fully serverless
-- Install via Homebrew (`brew install nkootstra/tap/xpose`)
+- Single command via npx (`npx xpose-dev 3000`)
 - Full-screen TUI with scrollable traffic log, live TTL countdown, and mouse support
-- Session resume - pick up where you left off with `xpose -r` (10-minute window)
+- Session resume - pick up where you left off with `npx xpose-dev -r` (10-minute window)
 - Auto-reconnection with exponential backoff
 - Configurable TTL (default 4 hours)
 - Turborepo port auto-discovery (`--from-turbo`)
@@ -39,34 +40,34 @@ xpose 3000
 
 ```bash
 # Expose port 3000 with a random subdomain
-xpose 3000
+npx xpose-dev 3000
 
 # Expose multiple ports at once (each gets its own subdomain)
-xpose 3000 8787
+npx xpose-dev 3000 8787
 
 # Auto-detect ports from Turborepo dev tasks
-xpose --from-turbo
+npx xpose-dev --from-turbo
 
 # Auto-detect ports from a specific Turborepo task/filter
-xpose --from-turbo --turbo-task dev --turbo-filter=@acme/web
+npx xpose-dev --from-turbo --turbo-task dev --turbo-filter=@acme/web
 
 # Auto-detect ports from a Turborepo in another local path
-xpose --from-turbo --path ../my-monorepo
+npx xpose-dev --from-turbo --path ../my-monorepo
 
 # Custom subdomain
-xpose 3000 --subdomain myapp
+npx xpose-dev 3000 --subdomain myapp
 
 # Custom TTL (in seconds, default: 14400 = 4 hours)
-xpose 3000 --ttl 7200
+npx xpose-dev 3000 --ttl 7200
 
 # Custom public domain (for self-hosting)
-xpose 3000 --domain tunnel.example.com
+npx xpose-dev 3000 --domain tunnel.example.com
 
 # Resume the previous session (within 10 minutes of exit)
-xpose -r
+npx xpose-dev -r
 ```
 
-When you exit the TUI, your session is saved automatically. Resume within 10 minutes using `xpose -r` to reconnect to the same URLs.
+When you exit the TUI, your session is saved automatically. Resume within 10 minutes using `npx xpose-dev -r` to reconnect to the same URLs.
 
 Current default request/response body limit is `5MB` (configurable in the worker via `MAX_BODY_SIZE_BYTES`).
 
@@ -144,7 +145,7 @@ curl https://tunnel.example.com
 Then run the CLI against your domain:
 
 ```bash
-xpose 3000 --domain tunnel.example.com
+npx xpose-dev 3000 --domain tunnel.example.com
 ```
 
 ## Development
@@ -159,22 +160,86 @@ bun run build
 # Run worker locally
 bun run dev --filter=@xpose/worker
 
-# Build TypeScript CLI
+# Run all tests
+bunx turbo run test
+```
+
+### Developing the CLI
+
+The CLI lives in `apps/cli/` and depends on two workspace packages (`@xpose/protocol`, `@xpose/tunnel-core`).
+
+**One-off build and run:**
+
+```bash
+# Build the CLI (and its workspace dependencies)
 bun run build --filter=@xpose/cli
 
-# Build Go CLI
-cd apps/cli-go && make build
-# Run tests
-cd apps/cli-go && make test
+# Run it
+cd apps/cli
+bun start -- 3000
+# or: node dist/index.js 3000
 ```
+
+**Watch mode (two terminals):**
+
+```bash
+# Terminal 1: rebuild on every change
+cd apps/cli
+bun dev
+
+# Terminal 2: run the built output
+cd apps/cli
+bun start -- 3000
+```
+
+`bun dev` only watches and rebuilds — it does not start the CLI. You need a second terminal to run `bun start -- 3000` (which executes `node dist/index.js 3000`). After each code change, tsup rebuilds automatically; stop and re-run `bun start` to pick up the new build.
+
+**Running against a local worker:**
+
+```bash
+# Terminal 1: local worker
+bun run dev --filter=@xpose/worker
+
+# Terminal 2: CLI pointing at local worker
+cd apps/cli
+bun start -- 3000 --domain localhost:8787
+```
+
+**Run CLI tests:**
+
+```bash
+bunx turbo run test --filter=@xpose/cli
+```
+
+### CLI Architecture
+
+```
+apps/cli/
+├── src/
+│   ├── index.ts           # Entry point — CLI arg parsing (citty), session resume, runTunnels()
+│   ├── tunnel-client.ts   # WebSocket tunnel client — HTTP proxy, reconnection, ping/pong
+│   ├── ws-relay.ts        # WebSocket relay manager — proxies WS connections (HMR support)
+│   └── tui/
+│       └── app.tsx         # ink (React for CLIs) TUI — split-pane panels, traffic log, TTL countdown
+├── tsup.config.ts         # Bundles workspace packages into a self-contained output with shebang
+└── package.json           # Published as "xpose-dev" on npm
+```
+
+Key design decisions:
+
+- **ink + React** for the TUI (replaces Bubble Tea from the old Go CLI). Renders a split-pane layout with a "Tunnels" panel and a scrollable "Traffic" panel.
+- **tsup** bundles `@xpose/protocol` and `@xpose/tunnel-core` into the output via `noExternal`, so the published npm package is self-contained (~47KB).
+- **citty** for CLI argument parsing (lightweight, zero-dep).
+- **Session resume**: on exit, a session file is saved to `~/.config/xpose/session.json`. The `-r` flag reloads it within a 10-minute window and reconnects to the same subdomains.
+- **Non-TTY safe**: `useInput` is guarded with `process.stdin.isTTY` so the CLI does not crash in non-interactive environments (CI, piped output).
 
 ### Monorepo Structure
 
 ```
-packages/protocol/     @xpose/protocol  - Shared message types & binary encoding
-apps/worker/           @xpose/worker    - Cloudflare Worker + Durable Object
-apps/cli/              @xpose/cli       - CLI tool (TypeScript/npm)
-apps/cli-go/                            - CLI tool (Go/Homebrew)
+packages/protocol/       @xpose/protocol      - Shared message types & binary encoding
+packages/tunnel-core/    @xpose/tunnel-core   - Shared CLI utilities (logger, turborepo, domain)
+apps/worker/             @xpose/worker        - Cloudflare Worker + Durable Object
+apps/cli/                xpose-dev            - CLI tool (TypeScript/npm)
 ```
 
 ## License

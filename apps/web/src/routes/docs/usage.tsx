@@ -6,7 +6,8 @@ export const Route = createFileRoute('/docs/usage')({
   head: () => ({
     meta: seo({
       title: 'Usage',
-      description: 'Learn how to use the xpose CLI to expose your local servers.',
+      description:
+        'Learn how to use the xpose CLI to expose your local servers.',
       path: '/docs/usage',
     }),
   }),
@@ -28,7 +29,7 @@ function UsagePage() {
       <p className="mb-4 leading-relaxed text-gray-400">
         Expose a local server running on port 3000:
       </p>
-      <CodeBlock code="xpose 3000" />
+      <CodeBlock code="npx xpose-dev 3000" />
 
       <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
         Multiple ports
@@ -36,7 +37,7 @@ function UsagePage() {
       <p className="mb-4 leading-relaxed text-gray-400">
         Expose multiple ports at once. Each gets its own tunnel:
       </p>
-      <CodeBlock code="xpose 3000 8787" />
+      <CodeBlock code="npx xpose-dev 3000 8787" />
 
       <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
         Custom subdomain
@@ -45,7 +46,7 @@ function UsagePage() {
         Choose a prefix for your subdomain. A short random code is always
         appended to prevent collisions:
       </p>
-      <CodeBlock code="xpose 3000 --subdomain my-app" />
+      <CodeBlock code="npx xpose-dev 3000 --subdomain my-app" />
       <p className="mt-2 text-sm text-gray-400">
         This gives you a URL like https://my-app-x7k2m4.xpose.dev
       </p>
@@ -56,7 +57,7 @@ function UsagePage() {
       <p className="mb-4 leading-relaxed text-gray-400">
         Limit how long the tunnel stays active (in seconds):
       </p>
-      <CodeBlock code="xpose 3000 --ttl 3600" />
+      <CodeBlock code="npx xpose-dev 3000 --ttl 3600" />
       <p className="mt-2 text-sm text-gray-400">
         Default: 14400 seconds (4 hours). Maximum: 86400 seconds (24 hours).
       </p>
@@ -68,7 +69,7 @@ function UsagePage() {
         When you exit the TUI, your session is saved automatically. Resume
         within 10 minutes to reconnect to the same tunnel URLs:
       </p>
-      <CodeBlock code="xpose -r" />
+      <CodeBlock code="npx xpose-dev -r" />
       <p className="mt-2 text-sm text-gray-400">
         This is useful when you need to restart the CLI without changing the
         URLs you shared. The session file is stored in ~/.config/xpose/.
@@ -81,7 +82,7 @@ function UsagePage() {
         If you use Turborepo, xpose can auto-discover the port from a running
         dev task:
       </p>
-      <CodeBlock code="xpose --from-turbo" />
+      <CodeBlock code="npx xpose-dev --from-turbo" />
     </div>
   )
 }

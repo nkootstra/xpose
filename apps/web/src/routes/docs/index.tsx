@@ -25,9 +25,7 @@ function DocsIntroPage() {
         manage.
       </p>
 
-      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
-        Features
-      </h2>
+      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">Features</h2>
       <ul className="mb-4 list-inside list-disc space-y-1 text-gray-400">
         <li>Serverless tunnel via Cloudflare Workers and Durable Objects</li>
         <li>Automatic public URL generation</li>
@@ -45,7 +43,7 @@ function DocsIntroPage() {
         Get started in seconds. Run the CLI with your local port and you will
         receive a public URL instantly.
       </p>
-      <CodeBlock code="npx xpose http 3000" />
+      <CodeBlock code="npx xpose-dev 3000" />
       <p className="mt-4 leading-relaxed text-gray-400">
         Read the{' '}
         <Link

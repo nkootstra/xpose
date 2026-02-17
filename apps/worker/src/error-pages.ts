@@ -112,7 +112,7 @@ export function tunnelNotConnected(): Response {
     title: "Tunnel not connected",
     message:
       "This tunnel exists but the local server isn't connected right now. It may have gone offline or the session expired.",
-    hint: "xpose 3000",
+    hint: "npx xpose-dev 3000",
   });
 }
 
@@ -143,7 +143,7 @@ export function tunnelExpired(): Response {
     title: "Tunnel expired",
     message:
       "This tunnel session has expired. The developer needs to start a new tunnel.",
-    hint: "xpose 3000",
+    hint: "npx xpose-dev 3000",
   });
 }
 

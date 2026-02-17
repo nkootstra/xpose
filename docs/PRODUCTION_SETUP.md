@@ -80,16 +80,8 @@ curl -s https://test.xpose.dev/
 
 ## 5. Use CLI Against Production
 
-TypeScript CLI:
-
 ```bash
-xpose 3000
-```
-
-Go CLI:
-
-```bash
-xpose 3000
+npx xpose-dev 3000
 ```
 
 The default domain is `xpose.dev` — no `--domain` flag needed.
@@ -97,7 +89,7 @@ The default domain is `xpose.dev` — no `--domain` flag needed.
 To use a custom domain:
 
 ```bash
-xpose 3000 --domain your-domain.com
+npx xpose-dev 3000 --domain your-domain.com
 ```
 
 ## 6. Pre-Release Quality Gate
@@ -109,7 +101,6 @@ bun run lint
 bun run check-types
 bun run build
 bunx turbo run test
-cd apps/cli-go && go test -v -race -count=1 ./...
 ```
 
 Release only if all commands pass.
@@ -119,25 +110,24 @@ Release only if all commands pass.
 ### Existing workflows
 
 - JS CI: `.github/workflows/js-ci.yml`
-- Go CLI CI: `.github/workflows/cli-ci.yml`
-- Go CLI release: `.github/workflows/cli-release.yml`
-
-### Required secret for Homebrew release
-
-- `HOMEBREW_TAP_GITHUB_TOKEN` (repo-scoped token for `nkootstra/homebrew-tap`)
+- CLI npm release: `.github/workflows/cli-npm-release.yml`
 
 `GITHUB_TOKEN` is provided automatically by GitHub Actions.
 
-## 8. Release the Go CLI
+### Required secret for npm release
+
+- `NPM_TOKEN` (npm publish token for `xpose-dev` package)
+
+## 8. Release the CLI
 
 Tag format expected by workflow:
 
 ```bash
-git tag cli/v0.1.0
-git push origin cli/v0.1.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-This triggers Goreleaser and publishes artifacts + Homebrew formula updates.
+This triggers the npm release workflow that publishes the `xpose-dev` package to npm.
 
 ## 9. Rollback
 
@@ -151,5 +141,5 @@ Web app rollback:
 
 CLI rollback:
 
-- Publish a new patch release tag (e.g. `cli/v0.1.1`) that reverts the bad change.
+- Publish a new patch release tag (e.g. `v0.1.1`) that reverts the bad change.
 - Avoid force-moving existing tags.

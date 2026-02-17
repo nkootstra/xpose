@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { EventEmitter } from "node:events";
 
 // Use vi.hoisted so the mock class is available when vi.mock factory runs
 const { MockWebSocket, getCapturedWs, resetCapturedWs } = vi.hoisted(() => {
@@ -32,8 +31,11 @@ const { MockWebSocket, getCapturedWs, resetCapturedWs } = vi.hoisted(() => {
 
   return {
     MockWebSocket,
-    getCapturedWs: () => _capturedWs as InstanceType<typeof MockWebSocket> | null,
-    resetCapturedWs: () => { _capturedWs = null; },
+    getCapturedWs: () =>
+      _capturedWs as InstanceType<typeof MockWebSocket> | null,
+    resetCapturedWs: () => {
+      _capturedWs = null;
+    },
   };
 });
 
@@ -42,7 +44,7 @@ vi.mock("ws", () => {
 });
 
 import { createTunnelClient } from "../tunnel-client.js";
-import type { TunnelStatus } from "../logger.js";
+import type { TunnelStatus } from "@xpose/tunnel-core";
 
 const defaultOpts = {
   subdomain: "test-sub",
@@ -115,6 +117,7 @@ describe("createTunnelClient", () => {
       subdomain: "test-sub",
       url: "https://test-sub.xpose.dev",
       ttl: 3600,
+      remainingTtl: 3600,
       sessionId: "sess-123",
       maxBodySizeBytes: 5242880,
     });
@@ -252,6 +255,7 @@ describe("createTunnelClient", () => {
       subdomain: "test-sub",
       url: "https://test-sub.xpose.dev",
       ttl: 3600,
+      remainingTtl: 3600,
       sessionId: "sess-123",
       maxBodySizeBytes: 5242880,
     });
@@ -288,5 +292,19 @@ describe("createTunnelClient", () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it("responds to ping messages with pong", () => {
+    const client = createTunnelClient(defaultOpts);
+    client.connect();
+    const ws = getCapturedWs()!;
+    ws.emit("open");
+    ws.sendMock.mockClear();
+
+    ws.emit("message", JSON.stringify({ type: "ping" }));
+
+    expect(ws.sendMock).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(ws.sendMock.mock.calls[0][0]);
+    expect(sent.type).toBe("pong");
   });
 });

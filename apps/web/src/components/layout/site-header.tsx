@@ -12,19 +12,21 @@ export function SiteHeader() {
         <Logo />
 
         <nav className="hidden items-center gap-1 md:flex">
-          <Button variant="ghost" size="sm" render={<Link to={DOCS_URL} />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            render={<Link to={DOCS_URL} />}
+          >
             Docs
           </Button>
           <Button
             variant="ghost"
             size="icon-sm"
+            nativeButton={false}
             aria-label="GitHub"
             render={
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              />
+              <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" />
             }
           >
             <Github className="size-4" />

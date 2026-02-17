@@ -5,43 +5,96 @@ import {
   buildCustomSubdomain,
 } from "@xpose/protocol";
 import { createTunnelClient } from "./tunnel-client.js";
-import { discoverTurboPorts } from "./turborepo.js";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  printBanner,
-  printTraffic,
-  printStatus,
   printError,
-} from "./logger.js";
+  discoverTurboPorts,
+  normalizeDomain,
+  saveSession,
+  loadSession,
+  type TunnelEntry,
+} from "@xpose/tunnel-core";
+import React from "react";
+import { render } from "ink";
+import { App } from "./tui/app.js";
 
-function normalizeDomain(raw: string): string {
-  const stripped = raw
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/\.$/, "");
-  return stripped;
+/**
+ * Create tunnel clients from entries, save the session, run the TUI,
+ * and print the resume hint on exit.
+ */
+function runTunnels(entries: TunnelEntry[], rawTtl: number): void {
+  const tunnelTtl = Math.min(rawTtl, PROTOCOL.MAX_TTL_SECONDS);
+
+  // Save session so it can be resumed after exit
+  saveSession({
+    tunnels: entries,
+    createdAt: new Date().toISOString(),
+  });
+
+  const clients = entries.map(({ subdomain, port, domain }) =>
+    createTunnelClient({
+      subdomain,
+      port,
+      ttl: tunnelTtl,
+      host: "localhost",
+      domain,
+    }),
+  );
+
+  const ports = entries.map((e) => e.port);
+
+  // Start all tunnel connections
+  for (const client of clients) {
+    client.connect();
+  }
+
+  function shutdown() {
+    // Update session timestamp so resume window starts from exit time
+    saveSession({
+      tunnels: entries,
+      createdAt: new Date().toISOString(),
+    });
+
+    for (const client of clients) {
+      client.disconnect();
+    }
+
+    const minutes = PROTOCOL.SESSION_RESUME_WINDOW_SECONDS / 60;
+    console.error(
+      `\n  Session saved. Resume within ${minutes} minutes with: xpose-dev -r\n`,
+    );
+  }
+
+  // Render the ink TUI
+  const inkApp = render(
+    React.createElement(App, {
+      clients,
+      ports,
+      onQuit: shutdown,
+    }),
+  );
+
+  inkApp.waitUntilExit().then(() => {
+    process.exit(0);
+  });
 }
 
 const main = defineCommand({
   meta: {
-    name: "xpose",
+    name: "xpose-dev",
     version: "0.0.1",
     description: "Expose local servers to the internet via Cloudflare",
   },
   args: {
     port: {
       type: "positional",
-      description:
-        "Local port to expose (optional when using --from-turbo)",
+      description: "Local port to expose (optional when using --from-turbo)",
       required: false,
     },
     fromTurbo: {
       type: "boolean",
-      description:
-        "Auto-detect ports from `turbo run <task> --dry=json`",
+      description: "Auto-detect ports from `turbo run <task> --dry=json`",
     },
     turboTask: {
       type: "string",
@@ -55,8 +108,7 @@ const main = defineCommand({
     turboPath: {
       type: "string",
       alias: "path",
-      description:
-        "Path to the Turborepo project root when using --from-turbo",
+      description: "Path to the Turborepo project root when using --from-turbo",
     },
     ttl: {
       type: "string",
@@ -72,6 +124,11 @@ const main = defineCommand({
       description: "Public tunnel domain (default: xpose.dev)",
       default: PROTOCOL.DEFAULT_PUBLIC_DOMAIN,
     },
+    resume: {
+      type: "boolean",
+      alias: "r",
+      description: "Resume the previous tunnel session",
+    },
   },
   async run({ args }) {
     const ttl = parseInt(args.ttl, 10);
@@ -80,14 +137,35 @@ const main = defineCommand({
       process.exit(1);
     }
 
+    // --- Resume mode ---
+    if (args.resume) {
+      const manualRawPorts = (
+        args._.length > 0 ? args._ : args.port ? [args.port] : []
+      ).map(String);
+      if (manualRawPorts.length > 0 || args.fromTurbo) {
+        printError("Cannot use --resume with port arguments or --from-turbo.");
+        process.exit(1);
+      }
+
+      const prev = loadSession();
+      if (!prev) {
+        const minutes = PROTOCOL.SESSION_RESUME_WINDOW_SECONDS / 60;
+        printError(
+          `No session to resume (sessions expire after ${minutes} minutes).`,
+        );
+        process.exit(1);
+      }
+
+      return runTunnels(prev.tunnels, ttl);
+    }
+
+    // --- Normal mode: resolve ports ---
     const manualRawPorts = (
-      args._.length > 0
-        ? args._
-        : args.port
-          ? [args.port]
-          : []
+      args._.length > 0 ? args._ : args.port ? [args.port] : []
     ).map(String);
-    const parsedManualPorts = manualRawPorts.map((raw) => Number.parseInt(raw, 10));
+    const parsedManualPorts = manualRawPorts.map((raw) =>
+      Number.parseInt(raw, 10),
+    );
     const invalidManualPort = parsedManualPorts.find(
       (port) => Number.isNaN(port) || port < 1 || port > 65535,
     );
@@ -104,9 +182,7 @@ const main = defineCommand({
         : process.cwd();
 
       if (!existsSync(turboCwd) || !statSync(turboCwd).isDirectory()) {
-        printError(
-          `Invalid --path. Directory does not exist: ${turboCwd}`,
-        );
+        printError(`Invalid --path. Directory does not exist: ${turboCwd}`);
         process.exit(1);
       }
 
@@ -118,9 +194,7 @@ const main = defineCommand({
         });
 
         if (discovered.length === 0) {
-          printError(
-            `No ports detected from Turborepo task "${turboTask}".`,
-          );
+          printError(`No ports detected from Turborepo task "${turboTask}".`);
         } else {
           console.log(
             `  Discovered from Turborepo (${turboTask}): ${discovered.map((entry) => `${entry.port} [${entry.packageName}]`).join(", ")}`,
@@ -131,99 +205,39 @@ const main = defineCommand({
           ports.add(entry.port);
         }
       } catch (err) {
-        printError(
-          `Failed to inspect Turborepo: ${(err as Error).message}`,
-        );
+        printError(`Failed to inspect Turborepo: ${(err as Error).message}`);
         process.exit(1);
       }
     }
 
     if (ports.size === 0) {
       printError(
-        "No ports provided. Pass ports directly (e.g. `xpose 3000 8787`) or use --from-turbo.",
+        "No ports provided. Pass ports directly (e.g. `xpose-dev 3000 8787`) or use --from-turbo.",
       );
       process.exit(1);
     }
 
     const resolvedPorts = [...ports];
     const baseSubdomain = args.subdomain?.trim();
-    const tunnelTtl = Math.min(ttl, PROTOCOL.MAX_TTL_SECONDS);
-    const tunnelDomain = normalizeDomain(args.domain ?? PROTOCOL.DEFAULT_PUBLIC_DOMAIN);
+    const tunnelDomain = normalizeDomain(
+      args.domain ?? PROTOCOL.DEFAULT_PUBLIC_DOMAIN,
+    );
     if (!tunnelDomain) {
       printError("Invalid domain. Pass a hostname like xpose.dev.");
       process.exit(1);
     }
-    const clients = resolvedPorts.map((port) => {
+
+    // Build tunnel entries with generated subdomains
+    const entries: TunnelEntry[] = resolvedPorts.map((port) => {
       const subdomain = baseSubdomain
         ? resolvedPorts.length === 1
           ? buildCustomSubdomain(baseSubdomain)
           : buildCustomSubdomain(`${baseSubdomain}-${port}`)
         : generateSubdomainId();
-
-      const client = createTunnelClient({
-        subdomain,
-        port,
-        ttl: tunnelTtl,
-        host: "localhost",
-        domain: tunnelDomain,
-      });
-
-      client.on("authenticated", ({ url, ttl: grantedTtl, maxBodySizeBytes }) => {
-        printBanner(url, port, grantedTtl);
-        printStatus("connected");
-        console.log(`  max body size: ${maxBodySizeBytes} bytes`);
-      });
-
-      client.on("traffic", (entry) => {
-        printTraffic({
-          ...entry,
-          path: `[${port}] ${entry.path}`,
-        });
-      });
-
-      client.on("status", (status) => {
-        if (status !== "connected") {
-          printStatus(status);
-        }
-      });
-
-      client.on("error", (err) => {
-        printError(`[port ${port}] ${err.message}`);
-      });
-
-      return client;
+      return { subdomain, port, domain: tunnelDomain };
     });
 
-    let remainingTunnels = clients.length;
-
-    for (const client of clients) {
-      client.on("expired", () => {
-        printStatus("expired");
-        remainingTunnels -= 1;
-        if (remainingTunnels <= 0) {
-          process.exit(0);
-        }
-      });
-      client.connect();
-    }
-
-    function shutdown(exitCode: number) {
-      for (const client of clients) {
-        client.disconnect();
-      }
-      process.exit(exitCode);
-    }
-
-    // Graceful shutdown
-    process.on("SIGINT", () => {
-      console.log();
-      printStatus("disconnected");
-      shutdown(0);
-    });
-
-    process.on("SIGTERM", () => {
-      shutdown(0);
-    });
+    return runTunnels(entries, ttl);
   },
 });
 

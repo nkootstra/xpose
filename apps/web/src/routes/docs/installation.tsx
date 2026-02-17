@@ -6,7 +6,7 @@ export const Route = createFileRoute('/docs/installation')({
   head: () => ({
     meta: seo({
       title: 'Installation',
-      description: 'Install the xpose CLI via Homebrew.',
+      description: 'Get started with xpose using npx — no install needed.',
       path: '/docs/installation',
     }),
   }),
@@ -18,20 +18,32 @@ function InstallationPage() {
     <div>
       <h1 className="mb-4 text-2xl font-bold text-gray-50">Installation</h1>
       <p className="mb-6 leading-relaxed text-gray-400">
-        Install the xpose CLI to use it from anywhere on your machine.
+        No install required. Run xpose directly with npx.
       </p>
 
-      <h2 className="mb-3 text-xl font-semibold text-gray-50">Homebrew</h2>
+      <h2 className="mb-3 text-xl font-semibold text-gray-50">Quick start</h2>
       <p className="mb-4 leading-relaxed text-gray-400">
-        Install xpose on macOS or Linux:
+        Expose a local server running on port 3000:
       </p>
-      <CodeBlock code="brew install nkootstra/tap/xpose" />
+      <CodeBlock code="npx xpose-dev 3000" />
+
+      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
+        Global install (optional)
+      </h2>
+      <p className="mb-4 leading-relaxed text-gray-400">
+        If you prefer a shorter command, install globally:
+      </p>
+      <CodeBlock code="npm install -g xpose-dev" />
+      <p className="mt-4 mb-4 leading-relaxed text-gray-400">
+        Then run it directly:
+      </p>
+      <CodeBlock code="xpose-dev 3000" />
 
       <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">Verify</h2>
       <p className="mb-4 leading-relaxed text-gray-400">
         Check that it installed correctly:
       </p>
-      <CodeBlock code="xpose --version" />
+      <CodeBlock code="xpose-dev --version" />
     </div>
   )
 }

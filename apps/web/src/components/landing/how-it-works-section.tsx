@@ -6,7 +6,7 @@ const STEPS = [
     number: '1',
     title: 'Run the CLI',
     description: 'A single command is all you need to get started.',
-    code: 'npx xpose http 3000',
+    code: 'npx xpose-dev 3000',
   },
   {
     number: '2',

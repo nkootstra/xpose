@@ -7,8 +7,10 @@ import {
   decodeBinaryFrame,
   type TunnelMessage,
   type HttpRequestMessage,
+  type WsFrameMessage,
 } from "@xpose/protocol";
-import type { TrafficEntry, TunnelStatus } from "./logger.js";
+import { WsRelayManager } from "./ws-relay.js";
+import type { TrafficEntry, TunnelStatus } from "@xpose/tunnel-core";
 
 interface BufferedBody {
   chunks: Uint8Array[];
@@ -80,6 +82,11 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
   const oversizedRequestIds = new Set<string>();
   const pendingRequestMeta = new Map<string, HttpRequestMessage>();
 
+  // WebSocket relay support
+  const wsRelayMgr = new WsRelayManager(opts.host, opts.port);
+  // Track pending WS frame types (set by ws-frame text message, consumed by next binary frame)
+  const pendingWsFrameTypes = new Map<string, "text" | "binary">();
+
   const tunnelDomain = opts.domain?.trim() || PROTOCOL.DEFAULT_PUBLIC_DOMAIN;
   const wsUrl = `wss://${opts.subdomain}.${tunnelDomain}${PROTOCOL.TUNNEL_CONNECT_PATH}`;
 
@@ -131,6 +138,23 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
 
   function handleBinaryFrame(data: ArrayBuffer) {
     const { requestId, body } = decodeBinaryFrame(data);
+
+    // Check if this is a WS relay frame
+    const frameType = pendingWsFrameTypes.get(requestId);
+    if (frameType !== undefined) {
+      pendingWsFrameTypes.delete(requestId);
+      wsRelayMgr.handleFrame(
+        {
+          type: "ws-frame",
+          streamId: requestId,
+          frameType,
+        } satisfies WsFrameMessage,
+        body,
+      );
+      return;
+    }
+
+    // Otherwise it's an HTTP request body chunk
     const chunks = requestBodyChunks.get(requestId);
     if (!chunks) return;
     if (oversizedRequestIds.has(requestId)) return;
@@ -166,7 +190,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
     });
 
     ws.on("message", (data: WebSocket.Data) => {
-      // Binary frame: body chunk for an incoming request
+      // Binary frame: body chunk for an incoming request or WS relay
       if (data instanceof ArrayBuffer) {
         handleBinaryFrame(data);
         return;
@@ -190,8 +214,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
       }
 
       // String text frame
-      const raw =
-        typeof data === "string" ? data : String(data);
+      const raw = typeof data === "string" ? data : String(data);
       const msg = parseTextMessage(raw);
       if (msg) handleTextMessage(msg);
     });
@@ -211,10 +234,12 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
       case "auth-ack": {
         sessionId = msg.sessionId;
         maxBodySizeBytes = msg.maxBodySizeBytes;
+        // Use remainingTtl for countdown if the server provided it
+        const displayTtl = msg.remainingTtl > 0 ? msg.remainingTtl : msg.ttl;
         emitStatus("connected");
         emitter.emit("authenticated", {
           url: msg.url,
-          ttl: msg.ttl,
+          ttl: displayTtl,
           sessionId: msg.sessionId,
           maxBodySizeBytes: msg.maxBodySizeBytes,
         });
@@ -226,7 +251,10 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           headerValue(msg.headers, "content-length"),
         );
         if (contentLength !== null && contentLength > maxBodySizeBytes) {
-          respondWith413(msg.id, `Request body exceeds ${maxBodySizeBytes} byte limit`);
+          respondWith413(
+            msg.id,
+            `Request body exceeds ${maxBodySizeBytes} byte limit`,
+          );
           break;
         }
 
@@ -253,7 +281,10 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         if (!reqMeta) break;
 
         if (oversizedRequestIds.delete(msg.id)) {
-          respondWith413(msg.id, `Request body exceeds ${maxBodySizeBytes} byte limit`);
+          respondWith413(
+            msg.id,
+            `Request body exceeds ${maxBodySizeBytes} byte limit`,
+          );
           break;
         }
 
@@ -264,6 +295,29 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
 
       case "http-body-chunk": {
         // Binary data follows, handled in binary frame branch.
+        break;
+      }
+
+      case "ping": {
+        sendMessage({ type: "pong" } satisfies TunnelMessage);
+        break;
+      }
+
+      case "ws-upgrade": {
+        // Server asks us to open a local WebSocket connection
+        wsRelayMgr.handleUpgrade(ws!, msg, sendMessage);
+        break;
+      }
+
+      case "ws-frame": {
+        // A WS frame header from the server. The actual payload follows as a binary frame.
+        // Store the frame type so handleBinaryFrame can dispatch correctly.
+        pendingWsFrameTypes.set(msg.streamId, msg.frameType);
+        break;
+      }
+
+      case "ws-close": {
+        wsRelayMgr.handleClose(msg);
         break;
       }
 
@@ -303,6 +357,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         method: msg.method,
         headers: reqHeaders,
         body: body ? toArrayBuffer(body) : undefined,
+        redirect: "manual",
       });
 
       const responseHeaders: Record<string, string> = {};
@@ -314,7 +369,10 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         headerValue(responseHeaders, "content-length"),
       );
       if (contentLength !== null && contentLength > maxBodySizeBytes) {
-        respondWith413(msg.id, `Response body exceeds ${maxBodySizeBytes} byte limit`);
+        respondWith413(
+          msg.id,
+          `Response body exceeds ${maxBodySizeBytes} byte limit`,
+        );
         emitter.emit("traffic", {
           id: msg.id,
           method: msg.method,
@@ -328,7 +386,10 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
 
       const bufferedResponse = await readBodyWithinLimit(response.body);
       if (!bufferedResponse) {
-        respondWith413(msg.id, `Response body exceeds ${maxBodySizeBytes} byte limit`);
+        respondWith413(
+          msg.id,
+          `Response body exceeds ${maxBodySizeBytes} byte limit`,
+        );
         emitter.emit("traffic", {
           id: msg.id,
           method: msg.method,
@@ -351,13 +412,20 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
       } satisfies TunnelMessage);
 
       if (hasBody) {
+        const chunkSize = 64 * 1024; // 64KB chunks
         for (const chunk of bufferedResponse.chunks) {
-          sendMessage({
-            type: "http-body-chunk",
-            id: msg.id,
-            done: false,
-          } satisfies TunnelMessage);
-          ws?.send(encodeBinaryFrame(msg.id, chunk));
+          // Split large chunks into 64KB pieces
+          for (let offset = 0; offset < chunk.byteLength; offset += chunkSize) {
+            const end = Math.min(offset + chunkSize, chunk.byteLength);
+            const piece = chunk.slice(offset, end);
+
+            sendMessage({
+              type: "http-body-chunk",
+              id: msg.id,
+              done: false,
+            } satisfies TunnelMessage);
+            ws?.send(encodeBinaryFrame(msg.id, piece));
+          }
         }
       }
 
@@ -375,9 +443,16 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         timestamp: new Date(),
       } satisfies TrafficEntry);
     } catch (err) {
+      const errMessage = (err as Error).message;
+      const isConnectionRefused =
+        errMessage.includes("ECONNREFUSED") ||
+        errMessage.includes("fetch failed");
+
       sendMessage({
         type: "error",
-        message: `Failed to reach localhost:${opts.port}: ${(err as Error).message}`,
+        message: isConnectionRefused
+          ? `Could not connect to localhost:${opts.port} — is your server running?`
+          : `Failed to reach localhost:${opts.port}: ${errMessage}`,
         requestId: msg.id,
         status: 502,
       } satisfies TunnelMessage);
@@ -429,6 +504,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
   function disconnect() {
     disconnectedIntentionally = true;
     emitStatus("disconnected");
+    wsRelayMgr.closeAll();
     ws?.close(1000, "Client disconnect");
     ws = null;
   }
