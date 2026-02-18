@@ -1,11 +1,47 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { FileCode, FileJson, FileText, Globe, Search, X } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  FileCode,
+  FileJson,
+  FileText,
+  Globe,
+  Search,
+  X,
+} from 'lucide-react'
 
 import { BodyViewer } from './body/body-viewer'
 import { useInspect } from './use-inspect'
 import type { InspectEntry } from './use-inspect'
 import { cn } from '@/lib/utils'
+
+/**
+ * URL patterns for framework dev-server internals that are hidden by default.
+ * These requests only appear during local development and are noise for most
+ * debugging workflows. Users can toggle them visible via the UI.
+ */
+const INTERNAL_PATH_PATTERNS: RegExp[] = [
+  // Vite
+  /^\/@fs\//,
+  /^\/@vite\//,
+  /^\/__vite_ping$/,
+  /^\/@react-refresh$/,
+  /^\/@id\//,
+  /\.hot-update\./,
+  /^\/node_modules\/\.vite\//,
+  // Next.js
+  /^\/_next\/webpack-hmr/,
+  /^\/__nextjs_original-stack-frame/,
+  // Nuxt
+  /^\/__nuxt_devtools__\//,
+  // Source maps
+  /\.map(\?.*)?$/,
+]
+
+function isInternalPath(path: string): boolean {
+  return INTERNAL_PATH_PATTERNS.some((re) => re.test(path))
+}
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'text-cyan-400',
@@ -226,32 +262,92 @@ function contentTypeIcon(contentType: string | undefined) {
   return null
 }
 
+const MIN_PANEL_WIDTH = 300
+const MAX_PANEL_WIDTH = 600
+const DEFAULT_PANEL_WIDTH = 384 // matches Tailwind w-96
+
 export function InspectDashboard({ port }: { port: number }) {
   const { entries, connectionState, tunnelUrl, clear } = useInspect(port)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
+  const [showInternal, setShowInternal] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
+  const isDragging = useRef(false)
+  const dragStartX = useRef(0)
+  const dragStartWidth = useRef(DEFAULT_PANEL_WIDTH)
 
   const selected = useMemo(
     () => entries.find((e) => e.id === selectedId) ?? null,
     [entries, selectedId],
   )
 
+  // Count how many entries are hidden as "internal"
+  const hiddenInternalCount = useMemo(
+    () => entries.filter((e) => isInternalPath(e.path)).length,
+    [entries],
+  )
+
   const filteredEntries = useMemo(() => {
-    if (!filter) return entries
-    const lf = filter.toLowerCase()
-    return entries.filter(
-      (e) =>
-        e.path.toLowerCase().includes(lf) ||
-        e.method.toLowerCase().includes(lf) ||
-        String(e.status).includes(lf),
-    )
-  }, [entries, filter])
+    let result = entries
+
+    // Hide framework-internal requests unless toggled on
+    if (!showInternal) {
+      result = result.filter((e) => !isInternalPath(e.path))
+    }
+
+    // Apply text filter
+    if (filter) {
+      const lf = filter.toLowerCase()
+      result = result.filter(
+        (e) =>
+          e.path.toLowerCase().includes(lf) ||
+          e.method.toLowerCase().includes(lf) ||
+          String(e.status).includes(lf),
+      )
+    }
+
+    return result
+  }, [entries, filter, showInternal])
 
   // Auto-select latest entry when nothing is selected
   const latestEntry =
     filteredEntries.length > 0
       ? filteredEntries[filteredEntries.length - 1]
       : undefined
+
+  // --- Resize handle logic ---
+  const onResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      isDragging.current = true
+      dragStartX.current = e.clientX
+      dragStartWidth.current = panelWidth
+    },
+    [panelWidth],
+  )
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDragging.current) return
+      const delta = e.clientX - dragStartX.current
+      const next = Math.min(
+        MAX_PANEL_WIDTH,
+        Math.max(MIN_PANEL_WIDTH, dragStartWidth.current + delta),
+      )
+      setPanelWidth(next)
+    }
+
+    function onMouseUp() {
+      isDragging.current = false
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   return (
     <div className="flex h-dvh flex-col bg-gray-950 text-gray-50">
@@ -291,8 +387,11 @@ export function InspectDashboard({ port }: { port: number }) {
       {/* Main content */}
       <div className="flex min-h-0 flex-1">
         {/* Request list */}
-        <div className="flex w-96 shrink-0 flex-col border-r border-white/10">
-          {/* Filter input */}
+        <div
+          className="flex shrink-0 flex-col border-r border-white/10"
+          style={{ width: panelWidth }}
+        >
+          {/* Filter input + internal toggle */}
           {entries.length > 0 && (
             <div className="border-b border-white/10 px-3 py-2">
               <div className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
@@ -317,6 +416,30 @@ export function InspectDashboard({ port }: { port: number }) {
                   </button>
                 )}
               </div>
+              {/* Toggle for framework-internal requests (Vite, Next.js, Nuxt, etc.) */}
+              {hiddenInternalCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowInternal((v) => !v)}
+                  className={cn(
+                    'mt-1.5 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
+                    showInternal
+                      ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+                      : 'text-gray-600 hover:bg-white/5 hover:text-gray-400',
+                  )}
+                >
+                  {showInternal ? (
+                    <Eye className="size-3 shrink-0" />
+                  ) : (
+                    <EyeOff className="size-3 shrink-0" />
+                  )}
+                  <span>
+                    {showInternal
+                      ? `Showing ${hiddenInternalCount} internal`
+                      : `${hiddenInternalCount} internal hidden`}
+                  </span>
+                </button>
+              )}
             </div>
           )}
 
@@ -389,6 +512,14 @@ export function InspectDashboard({ port }: { port: number }) {
               ))
             )}
           </div>
+        </div>
+
+        {/* Resize handle */}
+        <div
+          className="group relative z-10 flex w-1.5 cursor-col-resize items-center justify-center hover:bg-white/5"
+          onMouseDown={onResizeStart}
+        >
+          <div className="h-full w-px bg-white/5 transition-colors group-hover:bg-blue-500/60" />
         </div>
 
         {/* Detail panel */}
