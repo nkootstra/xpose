@@ -31,47 +31,70 @@ export interface TunnelClientOptions {
 /** Max body size to capture for the inspection dashboard (128 KB). */
 const INSPECT_MAX_BODY_BYTES = 128 * 1024;
 
-/** Content types that are captured as text for the inspection dashboard. */
-const TEXT_CONTENT_TYPES = [
+/**
+ * Content types worth capturing for the inspection dashboard.
+ *
+ * This intentionally excludes static asset types like JavaScript, CSS,
+ * and source files (JSX/TSX) — those are framework noise, not the API
+ * traffic users are inspecting.
+ */
+const INSPECTABLE_CONTENT_TYPES = new Set([
   "application/json",
   "application/xml",
   "text/xml",
   "text/html",
   "text/plain",
-  "text/css",
   "text/csv",
-  "text/javascript",
-  "application/javascript",
   "application/x-www-form-urlencoded",
   "application/graphql",
   "application/ld+json",
   "application/xhtml+xml",
   "application/soap+xml",
-  "image/svg+xml",
-];
+  "multipart/form-data",
+]);
 
-/** Check whether the content-type header indicates textual content worth capturing. */
-function isTextContentType(contentType: string | undefined): boolean {
+/** Content types that should never be captured (static assets / source code). */
+const IGNORED_CONTENT_TYPES = new Set([
+  "application/javascript",
+  "text/javascript",
+  "text/css",
+  "text/jsx",
+  "text/tsx",
+  "application/wasm",
+  "application/octet-stream",
+]);
+
+/** File extensions on the request path that indicate static assets. */
+const STATIC_ASSET_EXTENSIONS =
+  /\.(js|jsx|ts|tsx|mjs|cjs|css|map|woff2?|ttf|eot|otf|svg|png|jpe?g|gif|webp|avif|ico|mp4|webm|wasm)(\?.*)?$/i;
+
+/** Check whether this request/response pair is worth capturing for inspection. */
+function isInspectableContentType(contentType: string | undefined): boolean {
   if (!contentType) return false;
   const mimeType = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (IGNORED_CONTENT_TYPES.has(mimeType)) return false;
   return (
-    TEXT_CONTENT_TYPES.some((t) => mimeType === t) ||
-    mimeType.startsWith("text/") ||
+    INSPECTABLE_CONTENT_TYPES.has(mimeType) ||
     mimeType.endsWith("+json") ||
     mimeType.endsWith("+xml")
   );
 }
 
+/** Returns true when the request path looks like a static asset. */
+function isStaticAssetPath(path: string): boolean {
+  return STATIC_ASSET_EXTENSIONS.test(path);
+}
+
 /**
  * Capture a body as a UTF-8 string for the inspection dashboard.
- * Returns `null` for binary content or when the body is absent.
+ * Returns `null` for binary content, static assets, or when the body is absent.
  */
 function captureBodyForInspect(
   raw: Uint8Array | null,
   contentType: string | undefined,
 ): string | null {
   if (!raw || raw.byteLength === 0) return null;
-  if (!isTextContentType(contentType)) return null;
+  if (!isInspectableContentType(contentType)) return null;
   const bytes =
     raw.byteLength > INSPECT_MAX_BODY_BYTES
       ? raw.slice(0, INSPECT_MAX_BODY_BYTES)
@@ -414,6 +437,9 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
     requestBody: Uint8Array | null,
     responseBody: Uint8Array | null,
   ): void {
+    // Skip body capture entirely for static asset paths (JS, CSS, images, etc.)
+    const skipBodies = isStaticAssetPath(msg.path);
+
     const reqContentType =
       headerValue(msg.headers, "content-type") ?? undefined;
     const resContentType =
@@ -428,8 +454,12 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
       timestamp: Date.now(),
       requestHeaders: msg.headers,
       responseHeaders,
-      requestBody: captureBodyForInspect(requestBody, reqContentType),
-      responseBody: captureBodyForInspect(responseBody, resContentType),
+      requestBody: skipBodies
+        ? null
+        : captureBodyForInspect(requestBody, reqContentType),
+      responseBody: skipBodies
+        ? null
+        : captureBodyForInspect(responseBody, resContentType),
       requestContentType: reqContentType,
       responseContentType: resContentType,
     } satisfies InspectEntry);
