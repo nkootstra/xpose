@@ -24,6 +24,7 @@ const MAX_BROWSER_ENTRIES = 500
 interface UseInspectResult {
   entries: Array<InspectEntry>
   connectionState: ConnectionState
+  tunnelUrl: string | null
   clear: () => void
 }
 
@@ -38,6 +39,7 @@ export function useInspect(port: number): UseInspectResult {
   const [entries, setEntries] = useState<Array<InspectEntry>>([])
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('connecting')
+  const [tunnelUrl, setTunnelUrl] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -69,8 +71,14 @@ export function useInspect(port: number): UseInspectResult {
           const msg = JSON.parse(event.data as string)
 
           if (msg.type === 'connected') {
-            // Server acknowledged the connection — nothing else to do,
-            // the entry list is already empty.
+            // Server acknowledged the connection and may include the
+            // tunnel URL if a tunnel is already authenticated.
+            if (msg.tunnelUrl) setTunnelUrl(msg.tunnelUrl as string)
+            return
+          }
+
+          if (msg.type === 'tunnel-url') {
+            setTunnelUrl(msg.data as string)
             return
           }
 
@@ -107,5 +115,5 @@ export function useInspect(port: number): UseInspectResult {
     }
   }, [port])
 
-  return { entries, connectionState, clear }
+  return { entries, connectionState, tunnelUrl, clear }
 }

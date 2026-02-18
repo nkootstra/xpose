@@ -227,7 +227,7 @@ function contentTypeIcon(contentType: string | undefined) {
 }
 
 export function InspectDashboard({ port }: { port: number }) {
-  const { entries, connectionState, clear } = useInspect(port)
+  const { entries, connectionState, tunnelUrl, clear } = useInspect(port)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
 
@@ -263,6 +263,16 @@ export function InspectDashboard({ port }: { port: number }) {
             <span className="ml-1.5 text-gray-500">inspect</span>
           </h1>
           <ConnectionBadge state={connectionState} />
+          {tunnelUrl && (
+            <a
+              href={tunnelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-xs text-blue-400 transition-colors hover:bg-white/10 hover:text-blue-300"
+            >
+              {tunnelUrl}
+            </a>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">

@@ -22,6 +22,7 @@ export class InspectServer {
   private wss: WebSocketServer | null = null;
   private server: ReturnType<typeof createServer> | null = null;
   private port: number;
+  private tunnelUrl: string | null = null;
 
   constructor(port: number) {
     this.port = port;
@@ -30,6 +31,12 @@ export class InspectServer {
   /** Broadcast a new entry to every connected dashboard client. */
   push(entry: InspectEntry): void {
     this.broadcast({ type: "entry", data: entry });
+  }
+
+  /** Set the public tunnel URL and notify all connected clients. */
+  setTunnelUrl(url: string): void {
+    this.tunnelUrl = url;
+    this.broadcast({ type: "tunnel-url", data: url });
   }
 
   /** Start the HTTP + WS server. Resolves when listening. */
@@ -123,9 +130,9 @@ export class InspectServer {
       return;
     }
 
-    // Tell the client the connection is ready. No historical data is sent —
-    // the dashboard starts with an empty list and populates it in real time.
-    ws.send(JSON.stringify({ type: "connected" }));
+    // Tell the client the connection is ready. Include the tunnel URL if
+    // already known so the dashboard can display it immediately.
+    ws.send(JSON.stringify({ type: "connected", tunnelUrl: this.tunnelUrl }));
 
     ws.on("message", (data) => {
       try {

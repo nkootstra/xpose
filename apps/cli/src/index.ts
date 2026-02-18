@@ -60,6 +60,9 @@ async function runTunnels(
       client.on("inspect", (entry) => {
         inspectServer.push(entry);
       });
+      client.on("authenticated", ({ url }) => {
+        inspectServer.setTunnelUrl(url);
+      });
     }
   }
 

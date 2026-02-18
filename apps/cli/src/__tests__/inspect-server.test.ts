@@ -118,6 +118,8 @@ describe("InspectServer", () => {
         expect(firstMessage.type).toBe("connected");
         // No data payload — live-only means no historical entries
         expect(firstMessage.data).toBeUndefined();
+        // No tunnel URL set yet
+        expect(firstMessage.tunnelUrl).toBeNull();
       } finally {
         ws.close();
       }
@@ -127,6 +129,34 @@ describe("InspectServer", () => {
       const { ws, firstMessage } = await connectWs(port);
       try {
         expect(firstMessage.type).toBe("connected");
+        expect(firstMessage.tunnelUrl).toBeNull();
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("includes tunnelUrl in 'connected' message when already set", async () => {
+      server.setTunnelUrl("https://abc123.xpose.dev");
+
+      const { ws, firstMessage } = await connectWs(port);
+      try {
+        expect(firstMessage.type).toBe("connected");
+        expect(firstMessage.tunnelUrl).toBe("https://abc123.xpose.dev");
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("broadcasts tunnel-url to connected clients when setTunnelUrl is called", async () => {
+      const { ws } = await connectWs(port);
+
+      try {
+        const msgPromise = nextMessage(ws);
+        server.setTunnelUrl("https://xyz789.xpose.dev");
+
+        const msg = await msgPromise;
+        expect(msg.type).toBe("tunnel-url");
+        expect(msg.data).toBe("https://xyz789.xpose.dev");
       } finally {
         ws.close();
       }
