@@ -95,11 +95,13 @@ npx xpose-dev 3000 --header "X-Custom: value"
 
 ### Request inspection
 
-```sh
-npx xpose-dev 3000 --inspect
-```
+The inspection dashboard starts automatically on every tunnel. Open `https://local.xpose.dev` or press `i` in the TUI.
 
-Opens a dashboard at `https://local.xpose.dev?port=4194`. Press `i` in the TUI to open it.
+To disable it:
+
+```sh
+npx xpose-dev 3000 --no-inspect
+```
 
 ### Config file
 
@@ -137,7 +139,7 @@ Use `--no-config` to skip loading the config file.
 | `--rate-limit`   | Max requests per minute per IP                   | -            |
 | `--cors`         | Enable permissive CORS headers                   | `false`      |
 | `--header`       | Custom response header (`key:value`), repeatable | -            |
-| `--inspect`      | Start the request inspection server              | `false`      |
+| `--no-inspect`   | Disable the request inspection server            | `false`      |
 | `--inspect-port` | Port for the inspection server                   | `4194`       |
 | `--config`       | Path to config file                              | auto-detect  |
 | `--no-config`    | Skip loading the config file                     | `false`      |

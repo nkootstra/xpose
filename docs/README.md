@@ -116,17 +116,20 @@ When `--cors` is enabled, the tunnel automatically handles `OPTIONS` preflight r
 
 ### Request Inspection Dashboard
 
-Start a local inspection server to view request/response details in real-time, similar to Drizzle Studio Local.
+The inspection dashboard starts automatically with every tunnel. View request/response details in real-time, similar to Drizzle Studio Local.
 
 ```bash
-# Start with the inspection dashboard
-npx xpose-dev 3000 --inspect
+# Dashboard is always available — just start a tunnel
+npx xpose-dev 3000
 
 # Use a custom inspect port (default: 4194)
-npx xpose-dev 3000 --inspect --inspect-port 5000
+npx xpose-dev 3000 --inspect-port 5000
+
+# Disable the inspection server
+npx xpose-dev 3000 --no-inspect
 ```
 
-The dashboard opens at `https://local.xpose.dev?port=4194` and connects to the local inspect server via WebSocket. Press `i` in the TUI to open it in your browser.
+Open `https://local.xpose.dev` or press `i` in the TUI to open the dashboard in your browser.
 
 Features:
 

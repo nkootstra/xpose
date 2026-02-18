@@ -119,8 +119,8 @@ function ConfigurationPage() {
               defaultValue="—"
             />
             <FlagRow
-              flag="--inspect"
-              description="Start the local request inspection server"
+              flag="--no-inspect"
+              description="Disable the local request inspection server"
               defaultValue="false"
             />
             <FlagRow

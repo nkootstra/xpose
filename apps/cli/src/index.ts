@@ -68,7 +68,12 @@ async function runTunnels(
     client.connect();
   }
 
+  let shuttingDown = false;
+
   async function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
     // Update session timestamp so resume window starts from exit time
     saveSession({
       tunnels: entries,
@@ -89,9 +94,17 @@ async function runTunnels(
     );
   }
 
+  // Ensure clean shutdown on SIGINT (Ctrl+C) and SIGTERM
+  const signalHandler = async () => {
+    await shutdown();
+    process.exit(0);
+  };
+  process.on("SIGINT", signalHandler);
+  process.on("SIGTERM", signalHandler);
+
   // Build inspect URL for the TUI
   const inspectUrl = inspectServer
-    ? `https://local.xpose.dev?port=${inspectServer.boundPort}`
+    ? `https://local.xpose.dev/inspect?port=${inspectServer.boundPort}`
     : undefined;
 
   // Render the ink TUI
@@ -104,7 +117,8 @@ async function runTunnels(
     }),
   );
 
-  inkApp.waitUntilExit().then(() => {
+  inkApp.waitUntilExit().then(async () => {
+    await shutdown();
     process.exit(0);
   });
 }
@@ -130,34 +144,51 @@ function parseHeaderFlag(
 }
 
 /**
- * Optionally start the local inspection server.
- * Returns null if --inspect is not set.
+ * Start the local inspection server.
+ * Returns null only if --no-inspect is set or all port attempts fail.
+ * Tries up to MAX_PORT_RETRIES consecutive ports on EADDRINUSE.
  */
+const MAX_PORT_RETRIES = 10;
+
 async function maybeStartInspect(
-  inspect: boolean | undefined,
+  noInspect: boolean | undefined,
   inspectPortRaw: string | undefined,
 ): Promise<InspectServer | null> {
-  if (!inspect) return null;
+  if (noInspect) return null;
 
-  const port = inspectPortRaw
+  const basePort = inspectPortRaw
     ? Number.parseInt(inspectPortRaw, 10)
     : PROTOCOL.INSPECT_PORT;
 
-  if (Number.isNaN(port) || port < 1 || port > 65535) {
+  if (Number.isNaN(basePort) || basePort < 1 || basePort > 65535) {
     printError("Invalid --inspect-port. Must be between 1 and 65535.");
     process.exit(1);
   }
 
-  const server = new InspectServer(port);
-  try {
-    await server.start();
-  } catch (err) {
-    printError(
-      `Failed to start inspect server on port ${port}: ${(err as Error).message}`,
-    );
-    process.exit(1);
+  for (let attempt = 0; attempt < MAX_PORT_RETRIES; attempt++) {
+    const port = basePort + attempt;
+    if (port > 65535) break;
+
+    const server = new InspectServer(port);
+    try {
+      await server.start();
+      return server;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EADDRINUSE" && !inspectPortRaw) {
+        // Port in use and no explicit port requested — try next port
+        continue;
+      }
+      // Explicit port requested or non-EADDRINUSE error — warn and continue without inspect
+      printError(
+        `Could not start inspect server on port ${port}: ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
-  return server;
+
+  // All ports exhausted — not fatal, just skip inspect
+  return null;
 }
 
 const main = defineCommand({
@@ -234,10 +265,9 @@ const main = defineCommand({
       type: "boolean",
       description: "Skip loading the config file",
     },
-    inspect: {
+    noInspect: {
       type: "boolean",
-      description:
-        "Start the local request inspection server (opens dashboard at local.xpose.dev)",
+      description: "Disable the local request inspection server",
     },
     inspectPort: {
       type: "string",
@@ -271,8 +301,8 @@ const main = defineCommand({
       }
 
       const inspectServer = await maybeStartInspect(
-        args.inspect,
-        args.inspectPort,
+        args.noInspect as boolean | undefined,
+        args.inspectPort as string | undefined,
       );
       return runTunnels(prev.tunnels, ttl, inspectServer);
     }
@@ -449,10 +479,10 @@ const main = defineCommand({
       return { subdomain, port, domain: tunnelDomain, config };
     });
 
-    // --- Start inspect server if requested ---
+    // --- Start inspect server (always on unless --no-inspect) ---
     const inspectServer = await maybeStartInspect(
-      args.inspect,
-      args.inspectPort,
+      args.noInspect as boolean | undefined,
+      args.inspectPort as string | undefined,
     );
 
     return runTunnels(entries, ttl, inspectServer);

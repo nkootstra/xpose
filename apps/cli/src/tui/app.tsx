@@ -93,10 +93,8 @@ function TunnelCard({
           </Text>
           {inspectUrl && (
             <Text>
-              <Text color="magenta" bold>
-                {"  "}
-              </Text>
-              <Text dimColor>Inspect: </Text>
+              {"  "}
+              <Text dimColor>Inspect </Text>
               <Text color="magenta">{inspectUrl}</Text>
             </Text>
           )}
