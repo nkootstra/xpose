@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils'
  * These requests only appear during local development and are noise for most
  * debugging workflows. Users can toggle them visible via the UI.
  */
-const INTERNAL_PATH_PATTERNS: RegExp[] = [
+const INTERNAL_PATH_PATTERNS: Array<RegExp> = [
   // Vite
   /^\/@fs\//,
   /^\/@vite\//,
