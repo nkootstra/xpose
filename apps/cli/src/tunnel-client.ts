@@ -35,31 +35,31 @@ const INSPECT_MAX_BODY_BYTES = 128 * 1024;
  * Content types worth capturing for the inspection dashboard.
  *
  * This intentionally excludes static asset types like JavaScript, CSS,
- * and source files (JSX/TSX) — those are framework noise, not the API
- * traffic users are inspecting.
+ * source files (JSX/TSX), and HTML pages — those are framework noise
+ * or page navigations, not the API traffic users are inspecting.
  */
 const INSPECTABLE_CONTENT_TYPES = new Set([
   "application/json",
   "application/xml",
   "text/xml",
-  "text/html",
   "text/plain",
   "text/csv",
   "application/x-www-form-urlencoded",
   "application/graphql",
   "application/ld+json",
-  "application/xhtml+xml",
   "application/soap+xml",
   "multipart/form-data",
 ]);
 
-/** Content types that should never be captured (static assets / source code). */
+/** Content types that should never be captured (static assets / source code / HTML pages). */
 const IGNORED_CONTENT_TYPES = new Set([
   "application/javascript",
   "text/javascript",
   "text/css",
   "text/jsx",
   "text/tsx",
+  "text/html",
+  "application/xhtml+xml",
   "application/wasm",
   "application/octet-stream",
 ]);
