@@ -17,7 +17,7 @@ export function TextSearchBar({
   const [query, setQuery] = useState('')
   const [matchCount, setMatchCount] = useState(0)
   const [currentIndex, setCurrentIndex] = useState(0)
-  const markElements = useRef<HTMLElement[]>([])
+  const markElements = useRef<Array<HTMLElement>>([])
 
   // -----------------------------------------------------------------------
   // Highlight logic
@@ -44,7 +44,7 @@ export function TextSearchBar({
       setCurrentIndex(newMarks.length > 0 ? 1 : 0)
 
       if (newMarks.length > 0) {
-        scrollToMark(newMarks[0]!)
+        scrollToMark(newMarks[0])
       }
     },
     [containerRef],
@@ -59,8 +59,7 @@ export function TextSearchBar({
 
     const wrapped = ((index - 1 + marks.length) % marks.length) + 1
     setCurrentIndex(wrapped)
-    const target = marks[wrapped - 1]
-    if (target) scrollToMark(target)
+    scrollToMark(marks[wrapped - 1])
   }, [])
 
   // Debounced highlight
@@ -138,7 +137,7 @@ export function TextSearchBar({
     for (const el of markElements.current) {
       const parent = el.parentNode
       if (parent) {
-        parent.replaceChild(document.createTextNode(el.textContent ?? ''), el)
+        parent.replaceChild(document.createTextNode(el.textContent), el)
         parent.normalize()
       }
     }
@@ -150,20 +149,23 @@ export function TextSearchBar({
 // Pure DOM helpers
 // ---------------------------------------------------------------------------
 
-function collectTextNodes(root: Node): Text[] {
+function collectTextNodes(root: Node): Array<Text> {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
-  const nodes: Text[] = []
+  const nodes: Array<Text> = []
   let node: Node | null
   while ((node = walker.nextNode())) nodes.push(node as Text)
   return nodes
 }
 
-function markMatches(textNodes: Text[], query: string): HTMLElement[] {
-  const marks: HTMLElement[] = []
+function markMatches(
+  textNodes: Array<Text>,
+  query: string,
+): Array<HTMLElement> {
+  const marks: Array<HTMLElement> = []
   const lowerQuery = query.toLowerCase()
 
   for (const textNode of textNodes) {
-    const text = textNode.textContent ?? ''
+    const text = textNode.textContent
     const lowerText = text.toLowerCase()
     let idx = lowerText.indexOf(lowerQuery)
     if (idx === -1) continue

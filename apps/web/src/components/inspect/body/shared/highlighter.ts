@@ -1,9 +1,10 @@
-import { createHighlighterCoreSync, type HighlighterCore } from 'shiki/core'
+import { createHighlighterCoreSync } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import json from 'shiki/langs/json.mjs'
 import xml from 'shiki/langs/xml.mjs'
 import html from 'shiki/langs/html.mjs'
 import githubDark from 'shiki/themes/github-dark.mjs'
+import type { HighlighterCore } from 'shiki/core'
 
 /**
  * Singleton synchronous shiki highlighter.

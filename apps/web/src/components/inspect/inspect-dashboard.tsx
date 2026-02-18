@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 
+import { FileCode, FileJson, FileText, Globe, Search, X } from 'lucide-react'
+
+import { BodyViewer } from './body/body-viewer'
 import { useInspect } from './use-inspect'
 import type { InspectEntry } from './use-inspect'
-import { BodyViewer } from './body/body-viewer'
 import { cn } from '@/lib/utils'
-import { FileJson, FileText, FileCode, Globe, Search, X } from 'lucide-react'
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'text-cyan-400',

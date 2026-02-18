@@ -12,7 +12,7 @@
 export function findMatchingPaths(
   obj: unknown,
   query: string,
-  path: string[] = [],
+  path: Array<string> = [],
 ): Set<string> {
   const matches = new Set<string>()
   const lowerQuery = query.toLowerCase()
@@ -50,7 +50,7 @@ export function findMatchingPaths(
 }
 
 /** Add every prefix of `path` into `set` so ancestor nodes expand. */
-function addAncestorPaths(set: Set<string>, path: string[]): void {
+function addAncestorPaths(set: Set<string>, path: Array<string>): void {
   for (let i = 1; i <= path.length; i++) {
     set.add(path.slice(0, i).join('.'))
   }

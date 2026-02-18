@@ -4,10 +4,11 @@ import { Search, X } from 'lucide-react'
 
 import { jsonViewerTheme } from '../shared/json-theme'
 import { CopyBodyButton } from '../shared/copy-button'
-import { ViewToggle, type ViewMode } from '../shared/view-toggle'
+import { ViewToggle } from '../shared/view-toggle'
 import { TextSearchBar } from '../search/text-search'
 import { findMatchingPaths } from '../search/json-search'
 import { highlight } from '../shared/highlighter'
+import type { ViewMode } from '../shared/view-toggle'
 
 interface JsonRendererProps {
   /** The parsed JSON value to display as a collapsible tree. */
@@ -44,7 +45,7 @@ export function JsonRenderer({ data, raw, label }: JsonRendererProps) {
       _isExpanded: boolean,
       props: {
         value?: unknown
-        keys: (string | number)[]
+        keys: Array<string | number>
         level: number
       },
     ) => {
