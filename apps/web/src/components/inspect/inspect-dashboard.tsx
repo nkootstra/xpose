@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+
+import { useInspect } from './use-inspect'
+import type { InspectEntry } from './use-inspect'
 import { cn } from '@/lib/utils'
-import { useInspect, type InspectEntry } from './use-inspect'
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'text-cyan-400',
@@ -241,7 +243,8 @@ export function InspectDashboard({ port }: { port: number }) {
   )
 
   // Auto-select latest entry when nothing is selected
-  const latestEntry = entries[entries.length - 1]
+  const latestEntry =
+    entries.length > 0 ? entries[entries.length - 1] : undefined
 
   return (
     <div className="flex h-dvh flex-col bg-gray-950 text-gray-50">

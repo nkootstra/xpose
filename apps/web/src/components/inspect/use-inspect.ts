@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** Matches InspectEntry from the CLI. */
 export interface InspectEntry {
@@ -17,7 +17,7 @@ export interface InspectEntry {
 type ConnectionState = 'connecting' | 'connected' | 'disconnected'
 
 interface UseInspectResult {
-  entries: InspectEntry[]
+  entries: Array<InspectEntry>
   connectionState: ConnectionState
   clear: () => void
 }
@@ -27,7 +27,7 @@ interface UseInspectResult {
  * Receives the initial snapshot and live entries via WS.
  */
 export function useInspect(port: number): UseInspectResult {
-  const [entries, setEntries] = useState<InspectEntry[]>([])
+  const [entries, setEntries] = useState<Array<InspectEntry>>([])
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('connecting')
   const wsRef = useRef<WebSocket | null>(null)
@@ -57,7 +57,7 @@ export function useInspect(port: number): UseInspectResult {
         try {
           const msg = JSON.parse(event.data as string)
           if (msg.type === 'snapshot') {
-            setEntries(msg.data as InspectEntry[])
+            setEntries(msg.data as Array<InspectEntry>)
           } else if (msg.type === 'entry') {
             setEntries((prev) => {
               const next = [...prev, msg.data as InspectEntry]
