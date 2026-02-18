@@ -66,12 +66,11 @@ describe("InspectServer", () => {
   // --- HTTP endpoint tests ---
 
   describe("HTTP endpoints", () => {
-    it("GET / returns health JSON", async () => {
+    it("GET / returns health JSON (live-only, no entries count)", async () => {
       const { status, body } = await fetchJson(port, "/");
       expect(status).toBe(200);
       expect(body).toEqual({
         status: "ok",
-        entries: 0,
         clients: 0,
       });
     });
@@ -80,21 +79,6 @@ describe("InspectServer", () => {
       const { status, body } = await fetchJson(port, "/health");
       expect(status).toBe(200);
       expect(body.status).toBe("ok");
-    });
-
-    it("GET /entries returns empty array initially", async () => {
-      const { status, body } = await fetchJson(port, "/entries");
-      expect(status).toBe(200);
-      expect(body).toEqual([]);
-    });
-
-    it("GET /entries returns pushed entries", async () => {
-      const entry = makeEntry({ path: "/hello" });
-      server.push(entry);
-
-      const { body } = await fetchJson(port, "/entries");
-      expect(body).toHaveLength(1);
-      expect(body[0].path).toBe("/hello");
     });
 
     it("GET /unknown returns 404", async () => {
@@ -119,58 +103,30 @@ describe("InspectServer", () => {
       });
       expect(res.headers.get("access-control-allow-origin")).toBeNull();
     });
-
-    it("health reflects entry count after pushes", async () => {
-      server.push(makeEntry());
-      server.push(makeEntry());
-      server.push(makeEntry());
-
-      const { body } = await fetchJson(port, "/health");
-      expect(body.entries).toBe(3);
-    });
-  });
-
-  // --- Ring buffer tests ---
-
-  describe("ring buffer", () => {
-    it("caps at 200 entries", () => {
-      for (let i = 0; i < 250; i++) {
-        server.push(makeEntry({ id: `req-${i}` }));
-      }
-
-      // Access buffer via /entries endpoint
-      return fetchJson(port, "/entries").then(({ body }) => {
-        expect(body).toHaveLength(200);
-        // First entry should be req-50 (oldest 50 were evicted)
-        expect(body[0].id).toBe("req-50");
-        expect(body[199].id).toBe("req-249");
-      });
-    });
   });
 
   // --- WebSocket tests ---
 
   describe("WebSocket", () => {
-    it("sends snapshot on connect", async () => {
+    it("sends 'connected' message on connect (no snapshot)", async () => {
+      // Push entries before connecting — they should NOT be sent
       server.push(makeEntry({ path: "/a" }));
       server.push(makeEntry({ path: "/b" }));
 
       const { ws, firstMessage } = await connectWs(port);
       try {
-        expect(firstMessage.type).toBe("snapshot");
-        expect(firstMessage.data).toHaveLength(2);
-        expect(firstMessage.data[0].path).toBe("/a");
-        expect(firstMessage.data[1].path).toBe("/b");
+        expect(firstMessage.type).toBe("connected");
+        // No data payload — live-only means no historical entries
+        expect(firstMessage.data).toBeUndefined();
       } finally {
         ws.close();
       }
     });
 
-    it("sends empty snapshot when no entries exist", async () => {
+    it("sends 'connected' when no entries exist", async () => {
       const { ws, firstMessage } = await connectWs(port);
       try {
-        expect(firstMessage.type).toBe("snapshot");
-        expect(firstMessage.data).toEqual([]);
+        expect(firstMessage.type).toBe("connected");
       } finally {
         ws.close();
       }
@@ -178,7 +134,7 @@ describe("InspectServer", () => {
 
     it("broadcasts new entries to connected clients", async () => {
       const { ws, firstMessage } = await connectWs(port);
-      expect(firstMessage.type).toBe("snapshot");
+      expect(firstMessage.type).toBe("connected");
 
       try {
         const msgPromise = nextMessage(ws);
@@ -228,7 +184,7 @@ describe("InspectServer", () => {
     it("allows connections without an origin header", async () => {
       const { ws, firstMessage } = await connectWs(port);
       try {
-        expect(firstMessage.type).toBe("snapshot");
+        expect(firstMessage.type).toBe("connected");
       } finally {
         ws.close();
       }
@@ -239,7 +195,7 @@ describe("InspectServer", () => {
         origin: "http://localhost:3000",
       });
       try {
-        expect(firstMessage.type).toBe("snapshot");
+        expect(firstMessage.type).toBe("connected");
       } finally {
         ws.close();
       }
@@ -250,7 +206,7 @@ describe("InspectServer", () => {
         origin: "https://local.xpose.dev",
       });
       try {
-        expect(firstMessage.type).toBe("snapshot");
+        expect(firstMessage.type).toBe("connected");
       } finally {
         ws.close();
       }
