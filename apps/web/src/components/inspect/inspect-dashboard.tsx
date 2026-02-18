@@ -139,12 +139,6 @@ function DetailPanel({ entry }: { entry: InspectEntry }) {
           <div className="flex flex-col gap-6">
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Headers
-              </h4>
-              <HeadersTable headers={entry.requestHeaders} />
-            </div>
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Body
               </h4>
               <BodyViewer
@@ -152,15 +146,15 @@ function DetailPanel({ entry }: { entry: InspectEntry }) {
                 contentType={entry.requestContentType}
               />
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-6">
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Headers
               </h4>
-              <HeadersTable headers={entry.responseHeaders} />
+              <HeadersTable headers={entry.requestHeaders} />
             </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6">
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Body
@@ -169,6 +163,12 @@ function DetailPanel({ entry }: { entry: InspectEntry }) {
                 body={entry.responseBody}
                 contentType={entry.responseContentType}
               />
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Headers
+              </h4>
+              <HeadersTable headers={entry.responseHeaders} />
             </div>
           </div>
         )}
