@@ -66,7 +66,17 @@ describe("Hono router", () => {
   });
 
   describe("reserved subdomains", () => {
-    it("forwards local.xpose.dev to WEB_APP", async () => {
+    it("redirects local.xpose.dev root to /inspect", async () => {
+      const res = await app.request("https://local.xpose.dev/", undefined, {
+        ...defaultBindings,
+      });
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe(
+        "https://local.xpose.dev/inspect",
+      );
+    });
+
+    it("forwards local.xpose.dev/inspect to WEB_APP", async () => {
       const res = await app.request(
         "https://local.xpose.dev/inspect?port=4194",
         undefined,
@@ -77,7 +87,7 @@ describe("Hono router", () => {
       expect(body).toContain("xpose landing");
     });
 
-    it("forwards local.xpose.dev with any path to WEB_APP", async () => {
+    it("forwards local.xpose.dev with any non-root path to WEB_APP", async () => {
       const res = await app.request(
         "https://local.xpose.dev/any/path",
         undefined,

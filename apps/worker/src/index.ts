@@ -49,8 +49,18 @@ app.all("*", async (c, next) => {
   const hostname = new URL(c.req.url).hostname;
   const subdomain = extractSubdomain(hostname, domain);
 
-  if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
-    // Bare domain or reserved subdomain - forward to web app
+  if (!subdomain) {
+    // Bare domain - forward to web app
+    return c.env.WEB_APP.fetch(c.req.raw);
+  }
+
+  if (RESERVED_SUBDOMAINS.has(subdomain)) {
+    // Redirect local.xpose.dev root to the inspect dashboard
+    const url = new URL(c.req.url);
+    if (url.pathname === "/") {
+      url.pathname = "/inspect";
+      return c.redirect(url.toString(), 302);
+    }
     return c.env.WEB_APP.fetch(c.req.raw);
   }
 
