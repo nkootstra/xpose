@@ -28,6 +28,57 @@ export interface TunnelClientOptions {
   config?: TunnelConfig;
 }
 
+/** Max body size to capture for the inspection dashboard (128 KB). */
+const INSPECT_MAX_BODY_BYTES = 128 * 1024;
+
+/** Content types that are captured as text for the inspection dashboard. */
+const TEXT_CONTENT_TYPES = [
+  "application/json",
+  "application/xml",
+  "text/xml",
+  "text/html",
+  "text/plain",
+  "text/css",
+  "text/csv",
+  "text/javascript",
+  "application/javascript",
+  "application/x-www-form-urlencoded",
+  "application/graphql",
+  "application/ld+json",
+  "application/xhtml+xml",
+  "application/soap+xml",
+  "image/svg+xml",
+];
+
+/** Check whether the content-type header indicates textual content worth capturing. */
+function isTextContentType(contentType: string | undefined): boolean {
+  if (!contentType) return false;
+  const mimeType = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return (
+    TEXT_CONTENT_TYPES.some((t) => mimeType === t) ||
+    mimeType.startsWith("text/") ||
+    mimeType.endsWith("+json") ||
+    mimeType.endsWith("+xml")
+  );
+}
+
+/**
+ * Capture a body as a UTF-8 string for the inspection dashboard.
+ * Returns `null` for binary content or when the body is absent.
+ */
+function captureBodyForInspect(
+  raw: Uint8Array | null,
+  contentType: string | undefined,
+): string | null {
+  if (!raw || raw.byteLength === 0) return null;
+  if (!isTextContentType(contentType)) return null;
+  const bytes =
+    raw.byteLength > INSPECT_MAX_BODY_BYTES
+      ? raw.slice(0, INSPECT_MAX_BODY_BYTES)
+      : raw;
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+}
+
 /** Captured request/response data for the inspection dashboard. */
 export interface InspectEntry {
   id: string;
@@ -38,6 +89,10 @@ export interface InspectEntry {
   timestamp: number;
   requestHeaders: Record<string, string>;
   responseHeaders: Record<string, string>;
+  requestBody?: string | null;
+  responseBody?: string | null;
+  requestContentType?: string;
+  responseContentType?: string;
 }
 
 export interface TunnelClient {
@@ -350,13 +405,20 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
     }
   }
 
-  /** Emit an inspect event with request/response metadata (no bodies). */
+  /** Emit an inspect event with request/response metadata and captured bodies. */
   function emitInspect(
     msg: HttpRequestMessage,
     status: number,
     responseHeaders: Record<string, string>,
     duration: number,
+    requestBody: Uint8Array | null,
+    responseBody: Uint8Array | null,
   ): void {
+    const reqContentType =
+      headerValue(msg.headers, "content-type") ?? undefined;
+    const resContentType =
+      headerValue(responseHeaders, "content-type") ?? undefined;
+
     emitter.emit("inspect", {
       id: msg.id,
       method: msg.method,
@@ -366,6 +428,10 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
       timestamp: Date.now(),
       requestHeaders: msg.headers,
       responseHeaders,
+      requestBody: captureBodyForInspect(requestBody, reqContentType),
+      responseBody: captureBodyForInspect(responseBody, resContentType),
+      requestContentType: reqContentType,
+      responseContentType: resContentType,
     } satisfies InspectEntry);
   }
 
@@ -418,7 +484,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           duration,
           timestamp: new Date(),
         } satisfies TrafficEntry);
-        emitInspect(msg, 413, responseHeaders, duration);
+        emitInspect(msg, 413, responseHeaders, duration, body, null);
         return;
       }
 
@@ -437,7 +503,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           duration,
           timestamp: new Date(),
         } satisfies TrafficEntry);
-        emitInspect(msg, 413, {}, duration);
+        emitInspect(msg, 413, {}, duration, body, null);
         return;
       }
 
@@ -488,7 +554,14 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         timestamp: new Date(),
       } satisfies TrafficEntry);
 
-      emitInspect(msg, response.status, responseHeaders, duration);
+      emitInspect(
+        msg,
+        response.status,
+        responseHeaders,
+        duration,
+        body,
+        responseBodyConcat,
+      );
     } catch (err) {
       const errMessage = (err as Error).message;
       const isConnectionRefused =
@@ -514,7 +587,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         timestamp: new Date(),
       } satisfies TrafficEntry);
 
-      emitInspect(msg, 502, {}, duration);
+      emitInspect(msg, 502, {}, duration, body, null);
     }
   }
 

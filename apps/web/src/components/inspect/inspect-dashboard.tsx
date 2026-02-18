@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 
 import { useInspect } from './use-inspect'
 import type { InspectEntry } from './use-inspect'
+import { BodyViewer } from './body/body-viewer'
 import { cn } from '@/lib/utils'
+import { FileJson, FileText, FileCode, Globe, Search, X } from 'lucide-react'
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'text-cyan-400',
@@ -38,6 +40,13 @@ function formatTime(ts: number): string {
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
+}
+
+function formatBodySize(body: string): string {
+  const bytes = new TextEncoder().encode(body).byteLength
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function HeadersTable({ headers }: { headers: Record<string, string> }) {
@@ -127,18 +136,40 @@ function DetailPanel({ entry }: { entry: InspectEntry }) {
       {/* Content */}
       <div className="terminal-scroll flex-1 overflow-auto p-4">
         {tab === 'request' ? (
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Headers
-            </h4>
-            <HeadersTable headers={entry.requestHeaders} />
+          <div className="flex flex-col gap-6">
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Headers
+              </h4>
+              <HeadersTable headers={entry.requestHeaders} />
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Body
+              </h4>
+              <BodyViewer
+                body={entry.requestBody}
+                contentType={entry.requestContentType}
+              />
+            </div>
           </div>
         ) : (
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Headers
-            </h4>
-            <HeadersTable headers={entry.responseHeaders} />
+          <div className="flex flex-col gap-6">
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Headers
+              </h4>
+              <HeadersTable headers={entry.responseHeaders} />
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Body
+              </h4>
+              <BodyViewer
+                body={entry.responseBody}
+                contentType={entry.responseContentType}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -180,18 +211,46 @@ function ConnectionBadge({
   )
 }
 
+function contentTypeIcon(contentType: string | undefined) {
+  if (!contentType) return null
+  const mime = contentType.split(';')[0]?.trim().toLowerCase() ?? ''
+  if (mime === 'application/json' || mime.endsWith('+json'))
+    return <FileJson className="size-3 text-yellow-500/60" />
+  if (mime.includes('xml'))
+    return <FileCode className="size-3 text-orange-500/60" />
+  if (mime === 'text/html' || mime === 'application/xhtml+xml')
+    return <Globe className="size-3 text-blue-500/60" />
+  if (mime.startsWith('text/'))
+    return <FileText className="size-3 text-gray-500/60" />
+  return null
+}
+
 export function InspectDashboard({ port }: { port: number }) {
   const { entries, connectionState, clear } = useInspect(port)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [filter, setFilter] = useState('')
 
   const selected = useMemo(
     () => entries.find((e) => e.id === selectedId) ?? null,
     [entries, selectedId],
   )
 
+  const filteredEntries = useMemo(() => {
+    if (!filter) return entries
+    const lf = filter.toLowerCase()
+    return entries.filter(
+      (e) =>
+        e.path.toLowerCase().includes(lf) ||
+        e.method.toLowerCase().includes(lf) ||
+        String(e.status).includes(lf),
+    )
+  }, [entries, filter])
+
   // Auto-select latest entry when nothing is selected
   const latestEntry =
-    entries.length > 0 ? entries[entries.length - 1] : undefined
+    filteredEntries.length > 0
+      ? filteredEntries[filteredEntries.length - 1]
+      : undefined
 
   return (
     <div className="flex h-dvh flex-col bg-gray-950 text-gray-50">
@@ -221,62 +280,104 @@ export function InspectDashboard({ port }: { port: number }) {
       {/* Main content */}
       <div className="flex min-h-0 flex-1">
         {/* Request list */}
-        <div className="terminal-scroll w-96 shrink-0 overflow-y-auto border-r border-white/10">
-          {entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
-              <div className="mb-3 text-3xl">
-                {connectionState === 'connected' ? '⏳' : '🔌'}
-              </div>
-              <p className="text-sm text-gray-500">
-                {connectionState === 'connected'
-                  ? 'Waiting for requests...'
-                  : connectionState === 'connecting'
-                    ? 'Connecting to inspect server...'
-                    : 'Could not connect. Is xpose running with --inspect?'}
-              </p>
-            </div>
-          ) : (
-            [...entries].reverse().map((entry) => (
-              <button
-                type="button"
-                key={entry.id}
-                onClick={() => setSelectedId(entry.id)}
-                className={cn(
-                  'w-full border-b border-white/5 px-4 py-2.5 text-left transition-colors',
-                  selectedId === entry.id
-                    ? 'bg-white/[0.07]'
-                    : 'hover:bg-white/[0.03]',
+        <div className="flex w-96 shrink-0 flex-col border-r border-white/10">
+          {/* Filter input */}
+          {entries.length > 0 && (
+            <div className="border-b border-white/10 px-3 py-2">
+              <div className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1.5">
+                <Search className="size-3.5 shrink-0 text-gray-500" />
+                <input
+                  type="text"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setFilter('')
+                  }}
+                  placeholder="Filter by path, method, status..."
+                  className="w-full bg-transparent text-xs text-gray-300 placeholder:text-gray-600 focus:outline-none"
+                />
+                {filter && (
+                  <button
+                    type="button"
+                    onClick={() => setFilter('')}
+                    className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-300"
+                  >
+                    <X className="size-3" />
+                  </button>
                 )}
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      'w-16 shrink-0 font-mono text-xs font-bold',
-                      METHOD_COLORS[entry.method] ?? 'text-gray-300',
-                    )}
-                  >
-                    {entry.method}
-                  </span>
-                  <span className="truncate font-mono text-xs text-gray-300">
-                    {entry.path}
-                  </span>
-                  <span
-                    className={cn(
-                      'ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-medium',
-                      statusBg(entry.status),
-                      statusColor(entry.status),
-                    )}
-                  >
-                    {entry.status}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-600">
-                  <span>{formatTime(entry.timestamp)}</span>
-                  <span>{formatDuration(entry.duration)}</span>
-                </div>
-              </button>
-            ))
+              </div>
+            </div>
           )}
+
+          <div className="terminal-scroll flex-1 overflow-y-auto">
+            {entries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
+                <div className="mb-3 text-3xl">
+                  {connectionState === 'connected' ? '⏳' : '🔌'}
+                </div>
+                <p className="text-sm text-gray-500">
+                  {connectionState === 'connected'
+                    ? 'Waiting for requests...'
+                    : connectionState === 'connecting'
+                      ? 'Connecting to inspect server...'
+                      : 'Could not connect. Is xpose running with --inspect?'}
+                </p>
+              </div>
+            ) : filteredEntries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
+                <p className="text-sm text-gray-500">
+                  No requests match &ldquo;{filter}&rdquo;
+                </p>
+              </div>
+            ) : (
+              [...filteredEntries].reverse().map((entry) => (
+                <button
+                  type="button"
+                  key={entry.id}
+                  onClick={() => setSelectedId(entry.id)}
+                  className={cn(
+                    'w-full border-b border-white/5 px-4 py-2.5 text-left transition-colors',
+                    selectedId === entry.id
+                      ? 'bg-white/[0.07]'
+                      : 'hover:bg-white/[0.03]',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'w-16 shrink-0 font-mono text-xs font-bold',
+                        METHOD_COLORS[entry.method] ?? 'text-gray-300',
+                      )}
+                    >
+                      {entry.method}
+                    </span>
+                    <span className="truncate font-mono text-xs text-gray-300">
+                      {entry.path}
+                    </span>
+                    {contentTypeIcon(entry.responseContentType)}
+                    <span
+                      className={cn(
+                        'ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-medium',
+                        statusBg(entry.status),
+                        statusColor(entry.status),
+                      )}
+                    >
+                      {entry.status}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-600">
+                    <span>{formatTime(entry.timestamp)}</span>
+                    <span>{formatDuration(entry.duration)}</span>
+                    {entry.responseBody && (
+                      <span className="text-gray-700">
+                        {formatBodySize(entry.responseBody)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Detail panel */}

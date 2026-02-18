@@ -6,20 +6,19 @@ import {
 import { WebSocketServer, WebSocket } from "ws";
 import type { InspectEntry } from "./tunnel-client.js";
 
-const RING_BUFFER_SIZE = 200;
 const ALLOWED_ORIGIN = "https://local.xpose.dev";
 
 /**
  * Local HTTP + WebSocket server for the request inspection dashboard.
  *
  * The hosted web app at local.xpose.dev connects to ws://localhost:<port>
- * to receive live traffic data and the initial buffer of recent entries.
+ * to receive **live** traffic data. No historical entries are buffered —
+ * the dashboard only shows requests that arrive while the page is open.
  *
- * Architecture mirrors Drizzle Studio Local: the dashboard is a hosted SPA
- * that connects back to a local server for data.
+ * This keeps memory usage predictable (bodies can be up to 128 KB each)
+ * and avoids showing stale data that the user never asked to see.
  */
 export class InspectServer {
-  private buffer: InspectEntry[] = [];
   private wss: WebSocketServer | null = null;
   private server: ReturnType<typeof createServer> | null = null;
   private port: number;
@@ -28,16 +27,12 @@ export class InspectServer {
     this.port = port;
   }
 
-  /** Push a new entry into the ring buffer and broadcast to all connected clients. */
+  /** Broadcast a new entry to every connected dashboard client. */
   push(entry: InspectEntry): void {
-    this.buffer.push(entry);
-    if (this.buffer.length > RING_BUFFER_SIZE) {
-      this.buffer = this.buffer.slice(this.buffer.length - RING_BUFFER_SIZE);
-    }
     this.broadcast({ type: "entry", data: entry });
   }
 
-  /** Start the HTTP + WS server. Returns a promise that resolves when listening. */
+  /** Start the HTTP + WS server. Resolves when listening. */
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server = createServer((req, res) => this.handleHttp(req, res));
@@ -58,7 +53,6 @@ export class InspectServer {
   /** Stop the server and close all connections. */
   stop(): Promise<void> {
     return new Promise((resolve) => {
-      // Close all WebSocket connections
       if (this.wss) {
         for (const client of this.wss.clients) {
           client.close(1000, "Server shutting down");
@@ -87,7 +81,6 @@ export class InspectServer {
   }
 
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    // CORS preflight
     const origin = req.headers.origin;
     if (origin === ALLOWED_ORIGIN) {
       res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
@@ -106,17 +99,9 @@ export class InspectServer {
       res.end(
         JSON.stringify({
           status: "ok",
-          entries: this.buffer.length,
           clients: this.clientCount,
         }),
       );
-      return;
-    }
-
-    // Serve current buffer as JSON (useful for non-WS clients or debugging)
-    if (req.url === "/entries") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(this.buffer));
       return;
     }
 
@@ -127,7 +112,6 @@ export class InspectServer {
   private handleWsConnection(ws: WebSocket, req: IncomingMessage): void {
     const origin = req.headers.origin;
 
-    // Allow connections from the hosted dashboard and from localhost (dev)
     const isAllowed =
       !origin ||
       origin === ALLOWED_ORIGIN ||
@@ -139,10 +123,10 @@ export class InspectServer {
       return;
     }
 
-    // Send the current buffer as the initial snapshot
-    ws.send(JSON.stringify({ type: "snapshot", data: this.buffer }));
+    // Tell the client the connection is ready. No historical data is sent —
+    // the dashboard starts with an empty list and populates it in real time.
+    ws.send(JSON.stringify({ type: "connected" }));
 
-    // No messages expected from client, but handle ping/pong for keepalive
     ws.on("message", (data) => {
       try {
         const msg = JSON.parse(data.toString());
