@@ -7,9 +7,10 @@ const testEnv = env as unknown as Env;
 
 // Mock WEB_APP service binding that echoes back a simple HTML page
 const mockWebApp = {
-  fetch: async () => new Response("<html><body>xpose landing</body></html>", {
-    headers: { "content-type": "text/html" },
-  }),
+  fetch: async () =>
+    new Response("<html><body>xpose landing</body></html>", {
+      headers: { "content-type": "text/html" },
+    }),
 } as unknown as Fetcher;
 
 const defaultBindings = {
@@ -61,6 +62,28 @@ describe("Hono router", () => {
       expect(res.status).toBe(301);
       const location = res.headers.get("location");
       expect(location).toBe("https://xpose.dev/page?foo=bar&baz=1");
+    });
+  });
+
+  describe("reserved subdomains", () => {
+    it("forwards local.xpose.dev to WEB_APP", async () => {
+      const res = await app.request(
+        "https://local.xpose.dev/inspect?port=4194",
+        undefined,
+        { ...defaultBindings },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain("xpose landing");
+    });
+
+    it("forwards local.xpose.dev with any path to WEB_APP", async () => {
+      const res = await app.request(
+        "https://local.xpose.dev/any/path",
+        undefined,
+        { ...defaultBindings },
+      );
+      expect(res.status).toBe(200);
     });
   });
 
@@ -140,7 +163,9 @@ describe("Hono router", () => {
         customBindings,
       );
       expect(res.status).toBe(301);
-      expect(res.headers.get("location")).toBe("https://tunnel.example.com/path?q=1");
+      expect(res.headers.get("location")).toBe(
+        "https://tunnel.example.com/path?q=1",
+      );
     });
 
     it("routes subdomains on custom domain", async () => {

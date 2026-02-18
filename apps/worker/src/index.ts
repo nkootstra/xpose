@@ -40,14 +40,17 @@ app.all("*", async (c, next) => {
   await next();
 });
 
+// Reserved subdomains that forward to the web app instead of tunnel routing
+const RESERVED_SUBDOMAINS = new Set(["local"]);
+
 // Extract subdomain and store in context
 app.all("*", async (c, next) => {
   const domain = getPublicDomain(c.env);
   const hostname = new URL(c.req.url).hostname;
   const subdomain = extractSubdomain(hostname, domain);
 
-  if (!subdomain) {
-    // Bare domain - forward to marketing site
+  if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
+    // Bare domain or reserved subdomain - forward to web app
     return c.env.WEB_APP.fetch(c.req.raw);
   }
 
