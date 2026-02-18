@@ -22,7 +22,6 @@ describe("PROTOCOL constants", () => {
       "PING_MESSAGE",
       "PONG_MESSAGE",
       "INSPECT_PORT",
-      "INSPECT_MAX_BODY_CAPTURE",
     ];
 
     for (const key of expectedKeys) {

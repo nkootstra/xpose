@@ -13,8 +13,6 @@ import {
 import { WsRelayManager } from "./ws-relay.js";
 import type { TrafficEntry, TunnelStatus } from "@xpose/tunnel-core";
 
-const INSPECT_MAX_BODY = PROTOCOL.INSPECT_MAX_BODY_CAPTURE;
-
 interface BufferedBody {
   chunks: Uint8Array[];
   totalBytes: number;
@@ -40,8 +38,6 @@ export interface InspectEntry {
   timestamp: number;
   requestHeaders: Record<string, string>;
   responseHeaders: Record<string, string>;
-  requestBody?: string; // base64-encoded, capped
-  responseBody?: string; // base64-encoded, capped
 }
 
 export interface TunnelClient {
@@ -354,23 +350,11 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
     }
   }
 
-  /** Capture up to INSPECT_MAX_BODY bytes of a body as a base64 string. */
-  function captureBodyForInspect(body: Uint8Array | null): string | undefined {
-    if (!body || body.byteLength === 0) return undefined;
-    const slice =
-      body.byteLength <= INSPECT_MAX_BODY
-        ? body
-        : body.slice(0, INSPECT_MAX_BODY);
-    return Buffer.from(slice).toString("base64");
-  }
-
-  /** Emit an inspect event with captured request/response data. */
+  /** Emit an inspect event with request/response metadata (no bodies). */
   function emitInspect(
     msg: HttpRequestMessage,
-    body: Uint8Array | null,
     status: number,
     responseHeaders: Record<string, string>,
-    responseBody: Uint8Array | null,
     duration: number,
   ): void {
     emitter.emit("inspect", {
@@ -382,8 +366,6 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
       timestamp: Date.now(),
       requestHeaders: msg.headers,
       responseHeaders,
-      requestBody: captureBodyForInspect(body),
-      responseBody: captureBodyForInspect(responseBody),
     } satisfies InspectEntry);
   }
 
@@ -436,7 +418,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           duration,
           timestamp: new Date(),
         } satisfies TrafficEntry);
-        emitInspect(msg, body, 413, responseHeaders, null, duration);
+        emitInspect(msg, 413, responseHeaders, duration);
         return;
       }
 
@@ -455,7 +437,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           duration,
           timestamp: new Date(),
         } satisfies TrafficEntry);
-        emitInspect(msg, body, 413, {}, null, duration);
+        emitInspect(msg, 413, {}, duration);
         return;
       }
 
@@ -506,14 +488,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         timestamp: new Date(),
       } satisfies TrafficEntry);
 
-      emitInspect(
-        msg,
-        body,
-        response.status,
-        responseHeaders,
-        responseBodyConcat,
-        duration,
-      );
+      emitInspect(msg, response.status, responseHeaders, duration);
     } catch (err) {
       const errMessage = (err as Error).message;
       const isConnectionRefused =
@@ -539,7 +514,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         timestamp: new Date(),
       } satisfies TrafficEntry);
 
-      emitInspect(msg, body, 502, {}, null, duration);
+      emitInspect(msg, 502, {}, duration);
     }
   }
 

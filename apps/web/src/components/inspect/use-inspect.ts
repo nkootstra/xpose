@@ -10,8 +10,6 @@ export interface InspectEntry {
   timestamp: number
   requestHeaders: Record<string, string>
   responseHeaders: Record<string, string>
-  requestBody?: string // base64
-  responseBody?: string // base64
 }
 
 type ConnectionState = 'connecting' | 'connected' | 'disconnected'

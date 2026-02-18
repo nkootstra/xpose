@@ -40,26 +40,6 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-/** Decode base64 body to string. Returns null if not decodable as text. */
-function decodeBody(b64: string | undefined): string | null {
-  if (!b64) return null
-  try {
-    return atob(b64)
-  } catch {
-    return null
-  }
-}
-
-/** Try to pretty-print JSON, otherwise return as-is. */
-function prettyBody(raw: string | null): string {
-  if (!raw) return '(empty)'
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
-}
-
 function HeadersTable({ headers }: { headers: Record<string, string> }) {
   const entries = Object.entries(headers)
   if (entries.length === 0)
@@ -86,15 +66,6 @@ function HeadersTable({ headers }: { headers: Record<string, string> }) {
 
 function DetailPanel({ entry }: { entry: InspectEntry }) {
   const [tab, setTab] = useState<'request' | 'response'>('response')
-
-  const requestBodyText = useMemo(
-    () => decodeBody(entry.requestBody),
-    [entry.requestBody],
-  )
-  const responseBodyText = useMemo(
-    () => decodeBody(entry.responseBody),
-    [entry.responseBody],
-  )
 
   return (
     <div className="flex h-full flex-col">
@@ -156,42 +127,18 @@ function DetailPanel({ entry }: { entry: InspectEntry }) {
       {/* Content */}
       <div className="terminal-scroll flex-1 overflow-auto p-4">
         {tab === 'request' ? (
-          <div className="space-y-4">
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Headers
-              </h4>
-              <HeadersTable headers={entry.requestHeaders} />
-            </div>
-            {requestBodyText !== null && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Body
-                </h4>
-                <pre className="terminal-scroll max-h-80 overflow-auto rounded bg-black/30 p-3 font-mono text-xs text-gray-300">
-                  {prettyBody(requestBodyText)}
-                </pre>
-              </div>
-            )}
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Headers
+            </h4>
+            <HeadersTable headers={entry.requestHeaders} />
           </div>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Headers
-              </h4>
-              <HeadersTable headers={entry.responseHeaders} />
-            </div>
-            {responseBodyText !== null && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Body
-                </h4>
-                <pre className="terminal-scroll max-h-80 overflow-auto rounded bg-black/30 p-3 font-mono text-xs text-gray-300">
-                  {prettyBody(responseBodyText)}
-                </pre>
-              </div>
-            )}
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Headers
+            </h4>
+            <HeadersTable headers={entry.responseHeaders} />
           </div>
         )}
       </div>

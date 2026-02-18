@@ -371,10 +371,6 @@ describe("createTunnelClient", () => {
     expect(entry.timestamp).toBeGreaterThan(0);
     expect(entry.requestHeaders).toHaveProperty("host");
     expect(entry.responseHeaders).toHaveProperty("content-type");
-    // Response body should be base64 encoded "Hello World"
-    expect(entry.responseBody).toBe(
-      Buffer.from("Hello World").toString("base64"),
-    );
 
     vi.unstubAllGlobals();
   });
@@ -409,8 +405,6 @@ describe("createTunnelClient", () => {
 
     expect(inspectHandler).toHaveBeenCalledTimes(1);
     const entry = inspectHandler.mock.calls[0][0];
-    expect(entry.requestBody).toBeUndefined();
-    expect(entry.responseBody).toBeUndefined(); // null body → no capture
     expect(entry.status).toBe(204);
 
     vi.unstubAllGlobals();
@@ -446,7 +440,6 @@ describe("createTunnelClient", () => {
     const entry = inspectHandler.mock.calls[0][0];
     expect(entry.id).toBe("req-inspect-3");
     expect(entry.status).toBe(502);
-    expect(entry.responseBody).toBeUndefined();
     expect(entry.responseHeaders).toEqual({});
 
     vi.unstubAllGlobals();
