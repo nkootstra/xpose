@@ -155,3 +155,30 @@ export function upstreamError(message: string, status = 502): Response {
     message,
   });
 }
+
+/** 403 — Client IP is not in the tunnel's allowlist. */
+export function ipRestricted(): Response {
+  return errorPage({
+    status: 403,
+    title: "Access Denied",
+    message:
+      "Your IP address is not authorized to access this tunnel. The tunnel owner has restricted access to specific IP addresses.",
+  });
+}
+
+/** 429 — Rate limit exceeded. */
+export function rateLimited(retryAfter: number): Response {
+  const html = errorPage({
+    status: 429,
+    title: "Rate Limit Exceeded",
+    message: `Too many requests. Please try again in ${retryAfter} second${retryAfter === 1 ? "" : "s"}.`,
+  });
+
+  // Add Retry-After header to the existing response
+  const headers = new Headers(html.headers);
+  headers.set("retry-after", String(retryAfter));
+  return new Response(html.body, {
+    status: 429,
+    headers,
+  });
+}

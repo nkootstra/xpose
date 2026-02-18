@@ -13,6 +13,23 @@ describe("parseTextMessage", () => {
     expect(msg!.type).toBe("auth");
   });
 
+  it('returns typed message for "auth" with tunnel config', () => {
+    const raw = JSON.stringify({
+      type: "auth",
+      subdomain: "abc123",
+      ttl: 3600,
+      config: {
+        allowedIps: ["192.168.1.0/24", "10.0.0.1"],
+        rateLimit: 100,
+        cors: true,
+        customHeaders: { "x-custom": "value" },
+      },
+    });
+    const msg = parseTextMessage(raw);
+    expect(msg).not.toBeNull();
+    expect(msg!.type).toBe("auth");
+  });
+
   it('returns typed message for "auth-ack"', () => {
     const raw = JSON.stringify({
       type: "auth-ack",

@@ -5,19 +5,38 @@ export const Route = createFileRoute('/docs/configuration')({
   head: () => ({
     meta: seo({
       title: 'Configuration',
-      description: 'Configure the xpose CLI with flags and environment variables.',
+      description:
+        'Configure the xpose CLI with flags and environment variables.',
       path: '/docs/configuration',
     }),
   }),
   component: ConfigurationPage,
 })
 
+function FlagRow({
+  flag,
+  description,
+  defaultValue,
+}: {
+  flag: string
+  description: string
+  defaultValue: string
+}) {
+  return (
+    <tr className="border-b border-gray-800/50">
+      <td className="py-2 pr-4 font-mono text-xs text-gray-300">{flag}</td>
+      <td className="py-2 pr-4">{description}</td>
+      <td className="py-2">{defaultValue}</td>
+    </tr>
+  )
+}
+
 function ConfigurationPage() {
   return (
     <div>
       <h1 className="mb-4 text-2xl font-bold text-gray-50">Configuration</h1>
       <p className="mb-4 leading-relaxed text-gray-400">
-        xpose can be configured via CLI flags.
+        xpose can be configured via CLI flags and a config file.
       </p>
 
       <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
@@ -39,71 +58,122 @@ function ConfigurationPage() {
             </tr>
           </thead>
           <tbody className="text-gray-400">
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --subdomain
-              </td>
-              <td className="py-2 pr-4">Custom subdomain for the tunnel URL</td>
-              <td className="py-2">Random 12-char ID</td>
-            </tr>
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --ttl
-              </td>
-              <td className="py-2 pr-4">
-                Tunnel time-to-live in seconds
-              </td>
-              <td className="py-2">14400 (4h)</td>
-            </tr>
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --from-turbo
-              </td>
-              <td className="py-2 pr-4">
-                Auto-discover port from Turborepo
-              </td>
-              <td className="py-2">false</td>
-            </tr>
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --turbo-task
-              </td>
-              <td className="py-2 pr-4">Turborepo task name to inspect</td>
-              <td className="py-2">dev</td>
-            </tr>
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --turbo-filter
-              </td>
-              <td className="py-2 pr-4">Turborepo filter for package selection</td>
-              <td className="py-2">&mdash;</td>
-            </tr>
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --turbo-path
-              </td>
-              <td className="py-2 pr-4">Path to the Turborepo project root</td>
-              <td className="py-2">Current directory</td>
-            </tr>
-            <tr className="border-b border-gray-800/50">
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                -r, --resume
-              </td>
-              <td className="py-2 pr-4">
-                Resume the previous tunnel session (same URLs, within 10 minutes of exit)
-              </td>
-              <td className="py-2">false</td>
-            </tr>
-            <tr>
-              <td className="py-2 pr-4 font-mono text-xs text-gray-300">
-                --domain
-              </td>
-              <td className="py-2 pr-4">Public tunnel domain (for self-hosting)</td>
-              <td className="py-2">xpose.dev</td>
-            </tr>
+            <FlagRow
+              flag="--subdomain"
+              description="Custom subdomain for the tunnel URL"
+              defaultValue="Random 12-char ID"
+            />
+            <FlagRow
+              flag="--ttl"
+              description="Tunnel time-to-live in seconds"
+              defaultValue="14400 (4h)"
+            />
+            <FlagRow
+              flag="--from-turbo"
+              description="Auto-discover port from Turborepo"
+              defaultValue="false"
+            />
+            <FlagRow
+              flag="--turbo-task"
+              description="Turborepo task name to inspect"
+              defaultValue="dev"
+            />
+            <FlagRow
+              flag="--turbo-filter"
+              description="Turborepo filter for package selection"
+              defaultValue="—"
+            />
+            <FlagRow
+              flag="--turbo-path"
+              description="Path to the Turborepo project root"
+              defaultValue="Current directory"
+            />
+            <FlagRow
+              flag="-r, --resume"
+              description="Resume the previous tunnel session (same URLs, within 10 minutes)"
+              defaultValue="false"
+            />
+            <FlagRow
+              flag="--domain"
+              description="Public tunnel domain (for self-hosting)"
+              defaultValue="xpose.dev"
+            />
+            <FlagRow
+              flag="--allow-ips"
+              description="Comma-separated IP addresses or CIDR ranges to allow"
+              defaultValue="—"
+            />
+            <FlagRow
+              flag="--rate-limit"
+              description="Max requests per minute per IP (0 = unlimited)"
+              defaultValue="—"
+            />
+            <FlagRow
+              flag="--cors"
+              description="Enable permissive CORS headers on all responses"
+              defaultValue="false"
+            />
+            <FlagRow
+              flag="--header"
+              description="Custom response header (key:value), repeatable"
+              defaultValue="—"
+            />
+            <FlagRow
+              flag="--inspect"
+              description="Start the local request inspection server"
+              defaultValue="false"
+            />
+            <FlagRow
+              flag="--inspect-port"
+              description="Port for the inspection server"
+              defaultValue="4194"
+            />
+            <FlagRow
+              flag="--config"
+              description="Path to config file"
+              defaultValue="auto-detect"
+            />
+            <FlagRow
+              flag="--no-config"
+              description="Skip loading the config file"
+              defaultValue="false"
+            />
           </tbody>
         </table>
       </div>
+
+      <h2 className="mb-3 mt-8 text-xl font-semibold text-gray-50">
+        Config file
+      </h2>
+      <p className="mb-4 leading-relaxed text-gray-400">
+        Create an{' '}
+        <code className="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-300">
+          xpose.config.ts
+        </code>{' '}
+        file in your project root for repeatable tunnel configurations. CLI
+        flags override config file values.
+      </p>
+      <pre className="overflow-x-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-300">
+        {`import { defineConfig } from "@xpose/tunnel-core";
+
+export default defineConfig({
+  domain: "xpose.dev",
+  tunnels: [
+    {
+      port: 3000,
+      subdomain: "my-app",
+      cors: true,
+      allowIps: ["203.0.113.0/24"],
+      rateLimit: 100,
+      headers: { "X-Environment": "development" },
+    },
+    {
+      port: 8787,
+      subdomain: "my-api",
+    },
+  ],
+});`}
+      </pre>
     </div>
   )
 }

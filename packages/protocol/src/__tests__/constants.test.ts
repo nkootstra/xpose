@@ -21,6 +21,8 @@ describe("PROTOCOL constants", () => {
       "TUNNEL_CONNECT_PATH",
       "PING_MESSAGE",
       "PONG_MESSAGE",
+      "INSPECT_PORT",
+      "INSPECT_MAX_BODY_CAPTURE",
     ];
 
     for (const key of expectedKeys) {
@@ -29,9 +31,7 @@ describe("PROTOCOL constants", () => {
   });
 
   it("DEFAULT_TTL_SECONDS is less than MAX_TTL_SECONDS", () => {
-    expect(PROTOCOL.DEFAULT_TTL_SECONDS).toBeLessThan(
-      PROTOCOL.MAX_TTL_SECONDS,
-    );
+    expect(PROTOCOL.DEFAULT_TTL_SECONDS).toBeLessThan(PROTOCOL.MAX_TTL_SECONDS);
   });
 
   it("BACKOFF_BASE_MS is greater than 0", () => {

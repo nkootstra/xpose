@@ -35,6 +35,11 @@ npx xpose-dev 3000
 - Auto-reconnection with exponential backoff
 - Configurable TTL (default 4 hours)
 - Turborepo port auto-discovery (`--from-turbo`)
+- **IP allowlisting** — restrict tunnel access to specific IPs or CIDR ranges
+- **Rate limiting** — per-IP rate limiting with 429 responses and `Retry-After` header
+- **Custom response headers & CORS** — inject headers, `--cors` for permissive CORS
+- **Request inspection dashboard** — real-time request/response viewer at `local.xpose.dev`
+- **Config file** — `xpose.config.ts` with `defineConfig()` helper for repeatable setups
 
 ## Usage
 
@@ -70,6 +75,102 @@ npx xpose-dev -r
 When you exit the TUI, your session is saved automatically. Resume within 10 minutes using `npx xpose-dev -r` to reconnect to the same URLs.
 
 Current default request/response body limit is `5MB` (configurable in the worker via `MAX_BODY_SIZE_BYTES`).
+
+### IP Allowlisting
+
+Restrict tunnel access to specific IP addresses or CIDR ranges. Requests from other IPs get a `403 Forbidden` response.
+
+```bash
+# Allow only specific IPs
+npx xpose-dev 3000 --allow-ips 203.0.113.10,198.51.100.0/24
+
+# Allow a single IP
+npx xpose-dev 3000 --allow-ips 203.0.113.10
+```
+
+### Rate Limiting
+
+Limit the number of requests per IP per minute. Excess requests receive a `429 Too Many Requests` response with a `Retry-After` header.
+
+```bash
+# Allow 60 requests per minute per IP
+npx xpose-dev 3000 --rate-limit 60
+```
+
+### Custom Response Headers & CORS
+
+Inject custom headers on all tunnel responses, or enable permissive CORS with a single flag.
+
+```bash
+# Enable permissive CORS (Access-Control-Allow-Origin: *)
+npx xpose-dev 3000 --cors
+
+# Add custom response headers
+npx xpose-dev 3000 --header "X-Custom: value" --header "X-Another: value2"
+
+# Combine CORS with custom headers
+npx xpose-dev 3000 --cors --header "X-Frame-Options: DENY"
+```
+
+When `--cors` is enabled, the tunnel automatically handles `OPTIONS` preflight requests with a `204 No Content` response.
+
+### Request Inspection Dashboard
+
+Start a local inspection server to view request/response details in real-time, similar to Drizzle Studio Local.
+
+```bash
+# Start with the inspection dashboard
+npx xpose-dev 3000 --inspect
+
+# Use a custom inspect port (default: 4194)
+npx xpose-dev 3000 --inspect --inspect-port 5000
+```
+
+The dashboard opens at `https://local.xpose.dev?port=4194` and connects to the local inspect server via WebSocket. Press `i` in the TUI to open it in your browser.
+
+Features:
+
+- Live request/response streaming
+- Request and response headers inspection
+- Body preview (up to 32KB captured, auto-formatted JSON)
+- Connection status indicator
+- Ring buffer of the last 200 requests
+
+### Config File
+
+Create an `xpose.config.ts` in your project root for repeatable tunnel configurations:
+
+```typescript
+import { defineConfig } from "@xpose/tunnel-core";
+
+export default defineConfig({
+  domain: "xpose.dev",
+  tunnels: [
+    {
+      port: 3000,
+      subdomain: "my-app",
+      cors: true,
+      allowIps: ["203.0.113.0/24"],
+      rateLimit: 100,
+      headers: {
+        "X-Environment": "development",
+      },
+    },
+    {
+      port: 8787,
+      subdomain: "my-api",
+    },
+  ],
+});
+```
+
+Then run without any arguments:
+
+```bash
+npx xpose-dev
+```
+
+CLI flags override config file values. Use `--no-config` to skip loading the config file, or `--config path/to/config.ts` to specify an explicit path.
 
 ## Architecture
 
@@ -217,8 +318,9 @@ bunx turbo run test --filter=@xpose/cli
 apps/cli/
 ├── src/
 │   ├── index.ts           # Entry point — CLI arg parsing (citty), session resume, runTunnels()
-│   ├── tunnel-client.ts   # WebSocket tunnel client — HTTP proxy, reconnection, ping/pong
+│   ├── tunnel-client.ts   # WebSocket tunnel client — HTTP proxy, reconnection, inspect events
 │   ├── ws-relay.ts        # WebSocket relay manager — proxies WS connections (HMR support)
+│   ├── inspect-server.ts  # Local HTTP+WS server for the request inspection dashboard
 │   └── tui/
 │       └── app.tsx         # ink (React for CLIs) TUI — split-pane panels, traffic log, TTL countdown
 ├── tsup.config.ts         # Bundles workspace packages into a self-contained output with shebang

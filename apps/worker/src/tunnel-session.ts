@@ -6,6 +6,7 @@ import {
   decodeBinaryFrame,
   validateSubdomain,
   type TunnelMessage,
+  type TunnelConfig,
 } from "@xpose/protocol";
 import type { Env } from "./types.js";
 import {
@@ -14,7 +15,11 @@ import {
   tunnelDisconnected,
   tunnelExpired,
   upstreamError,
+  ipRestricted,
+  rateLimited,
 } from "./error-pages.js";
+import { isIpAllowed } from "./ip-restrict.js";
+import { RateLimiter } from "./rate-limiter.js";
 
 interface PendingRequest {
   resolve: (response: Response) => void;
@@ -70,7 +75,10 @@ function headerValue(
   return undefined;
 }
 
-function payloadTooLargeResponse(kind: "Request" | "Response", maxBytes: number) {
+function payloadTooLargeResponse(
+  kind: "Request" | "Response",
+  maxBytes: number,
+) {
   return new Response(`${kind} body exceeds ${maxBytes} byte limit`, {
     status: 413,
     headers: { "content-type": "text/plain; charset=utf-8" },
@@ -80,12 +88,20 @@ function payloadTooLargeResponse(kind: "Request" | "Response", maxBytes: number)
 export class TunnelSession extends DurableObject<Env> {
   private pendingRequests = new Map<string, PendingRequest>();
   /** Maps streamId -> resolve function for pending ws-upgrade-ack. */
-  private pendingWsUpgrades = new Map<string, {
-    resolve: (response: Response) => void;
-    browserWs: WebSocket;
-    timeout: ReturnType<typeof setTimeout>;
-  }>();
+  private pendingWsUpgrades = new Map<
+    string,
+    {
+      resolve: (response: Response) => void;
+      browserWs: WebSocket;
+      timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
   private readonly maxBodySizeBytes: number;
+
+  /** Tunnel access-control and response configuration (set on auth). */
+  private tunnelConfig: TunnelConfig | undefined;
+  /** Per-IP rate limiter (created on auth if rateLimit > 0). */
+  private rateLimiter: RateLimiter | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -132,6 +148,90 @@ export class TunnelSession extends DurableObject<Env> {
     return null;
   }
 
+  // ---- Access control helpers ----
+
+  /**
+   * Extract the client IP from the request.
+   *
+   * Prefers `cf-connecting-ip` (single IP set by Cloudflare), falls back
+   * to the first entry in `x-forwarded-for` (which may contain multiple
+   * comma-separated IPs), then `x-real-ip`.
+   */
+  private getClientIp(request: Request): string {
+    // cf-connecting-ip is always a single IP set by Cloudflare
+    const cfIp = request.headers.get("cf-connecting-ip");
+    if (cfIp) return cfIp.trim();
+
+    // x-forwarded-for may be "client, proxy1, proxy2" — take the first
+    const xff = request.headers.get("x-forwarded-for");
+    if (xff) {
+      const first = xff.split(",")[0]?.trim();
+      if (first) return first;
+    }
+
+    return request.headers.get("x-real-ip")?.trim() ?? "unknown";
+  }
+
+  /**
+   * Check IP allowlist and rate limit for an incoming request.
+   * Returns an error Response if blocked, or null if allowed.
+   */
+  private checkAccess(request: Request): Response | null {
+    const clientIp = this.getClientIp(request);
+
+    // IP allowlist check
+    if (this.tunnelConfig?.allowedIps?.length) {
+      if (!isIpAllowed(clientIp, this.tunnelConfig.allowedIps)) {
+        return ipRestricted();
+      }
+    }
+
+    // Rate limit check
+    if (this.rateLimiter) {
+      const result = this.rateLimiter.check(clientIp);
+      if (!result.allowed) {
+        return rateLimited(result.retryAfterSeconds ?? 60);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Inject CORS and custom headers into a response based on tunnel config.
+   */
+  private applyResponseHeaders(response: Response): Response {
+    if (!this.tunnelConfig?.cors && !this.tunnelConfig?.customHeaders) {
+      return response;
+    }
+
+    const headers = new Headers(response.headers);
+
+    if (this.tunnelConfig.cors) {
+      headers.set("access-control-allow-origin", "*");
+      headers.set(
+        "access-control-allow-methods",
+        "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS",
+      );
+      headers.set("access-control-allow-headers", "*");
+      headers.set("access-control-max-age", "86400");
+    }
+
+    if (this.tunnelConfig.customHeaders) {
+      for (const [key, value] of Object.entries(
+        this.tunnelConfig.customHeaders,
+      )) {
+        headers.set(key, value);
+      }
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+
   // ---- Fetch handler ----
 
   async fetch(request: Request): Promise<Response> {
@@ -140,6 +240,29 @@ export class TunnelSession extends DurableObject<Env> {
     if (url.pathname === PROTOCOL.TUNNEL_CONNECT_PATH) {
       return this.handleCliWebSocketUpgrade();
     }
+
+    // CORS preflight: respond immediately without proxying
+    if (
+      this.tunnelConfig?.cors &&
+      request.method === "OPTIONS" &&
+      request.headers.get("origin")
+    ) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods":
+            "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS",
+          "access-control-allow-headers":
+            request.headers.get("access-control-request-headers") ?? "*",
+          "access-control-max-age": "86400",
+        },
+      });
+    }
+
+    // Access control (IP allowlist + rate limiting)
+    const accessDenied = this.checkAccess(request);
+    if (accessDenied) return accessDenied;
 
     // Check if this is a browser WebSocket upgrade request
     const upgradeHeader = request.headers.get("upgrade");
@@ -217,7 +340,10 @@ export class TunnelSession extends DurableObject<Env> {
     const responseHeaders = new Headers();
     const requestedProtocol = request.headers.get("sec-websocket-protocol");
     if (requestedProtocol) {
-      responseHeaders.set("sec-websocket-protocol", requestedProtocol.split(",")[0].trim());
+      responseHeaders.set(
+        "sec-websocket-protocol",
+        requestedProtocol.split(",")[0].trim(),
+      );
     }
 
     return new Response(null, {
@@ -263,7 +389,9 @@ export class TunnelSession extends DurableObject<Env> {
       return tunnelNotConnected();
     }
 
-    const contentLength = parseContentLength(request.headers.get("content-length"));
+    const contentLength = parseContentLength(
+      request.headers.get("content-length"),
+    );
     if (contentLength !== null && contentLength > this.maxBodySizeBytes) {
       return payloadTooLargeResponse("Request", this.maxBodySizeBytes);
     }
@@ -413,7 +541,9 @@ export class TunnelSession extends DurableObject<Env> {
       if (pending.responseBodyBytes > this.maxBodySizeBytes) {
         clearTimeout(pending.timeout);
         this.pendingRequests.delete(requestId);
-        pending.resolve(payloadTooLargeResponse("Response", this.maxBodySizeBytes));
+        pending.resolve(
+          payloadTooLargeResponse("Response", this.maxBodySizeBytes),
+        );
         return;
       }
 
@@ -453,6 +583,16 @@ export class TunnelSession extends DurableObject<Env> {
           await this.ctx.storage.setAlarm(Date.now() + requestedTtl * 1000);
         }
 
+        // Store tunnel config from auth message
+        this.tunnelConfig = msg.config;
+
+        // Create rate limiter if configured
+        if (msg.config?.rateLimit && msg.config.rateLimit > 0) {
+          this.rateLimiter = new RateLimiter(msg.config.rateLimit);
+        } else {
+          this.rateLimiter = null;
+        }
+
         const sessionId = crypto.randomUUID();
 
         ws.send(
@@ -464,6 +604,7 @@ export class TunnelSession extends DurableObject<Env> {
             remainingTtl,
             sessionId,
             maxBodySizeBytes: this.maxBodySizeBytes,
+            config: msg.config,
           } satisfies TunnelMessage),
         );
         break;
@@ -479,7 +620,9 @@ export class TunnelSession extends DurableObject<Env> {
         if (contentLength !== null && contentLength > this.maxBodySizeBytes) {
           clearTimeout(pending.timeout);
           this.pendingRequests.delete(msg.id);
-          pending.resolve(payloadTooLargeResponse("Response", this.maxBodySizeBytes));
+          pending.resolve(
+            payloadTooLargeResponse("Response", this.maxBodySizeBytes),
+          );
           break;
         }
 
@@ -490,10 +633,12 @@ export class TunnelSession extends DurableObject<Env> {
           clearTimeout(pending.timeout);
           this.pendingRequests.delete(msg.id);
           pending.resolve(
-            new Response(null, {
-              status: msg.status,
-              headers: msg.headers,
-            }),
+            this.applyResponseHeaders(
+              new Response(null, {
+                status: msg.status,
+                headers: msg.headers,
+              }),
+            ),
           );
         }
         break;
@@ -523,10 +668,12 @@ export class TunnelSession extends DurableObject<Env> {
         }
 
         pending.resolve(
-          new Response(body, {
-            status: pending.responseStatus ?? 200,
-            headers: pending.responseHeaders ?? {},
-          }),
+          this.applyResponseHeaders(
+            new Response(body, {
+              status: pending.responseStatus ?? 200,
+              headers: pending.responseHeaders ?? {},
+            }),
+          ),
         );
         break;
       }
@@ -537,9 +684,7 @@ export class TunnelSession extends DurableObject<Env> {
           if (pending) {
             clearTimeout(pending.timeout);
             this.pendingRequests.delete(msg.requestId);
-            pending.resolve(
-              upstreamError(msg.message, msg.status ?? 502),
-            );
+            pending.resolve(upstreamError(msg.message, msg.status ?? 502));
           }
         }
         break;
@@ -636,9 +781,7 @@ export class TunnelSession extends DurableObject<Env> {
 
         for (const [, pending] of this.pendingRequests) {
           clearTimeout(pending.timeout);
-          pending.resolve(
-            tunnelDisconnected(),
-          );
+          pending.resolve(tunnelDisconnected());
         }
         this.pendingRequests.clear();
       }, PROTOCOL.RECONNECT_GRACE_PERIOD_MS);
@@ -676,16 +819,18 @@ export class TunnelSession extends DurableObject<Env> {
 
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
-      pending.resolve(
-        tunnelExpired(),
-      );
+      pending.resolve(tunnelExpired());
     }
     this.pendingRequests.clear();
   }
 
   // ---- Helper: clean up a browser WS stream ----
 
-  private cleanupBrowserStream(streamId: string, code = 1000, reason = "Stream closed") {
+  private cleanupBrowserStream(
+    streamId: string,
+    code = 1000,
+    reason = "Stream closed",
+  ) {
     const browserWs = this.getBrowserSocket(streamId);
     if (browserWs) {
       try {

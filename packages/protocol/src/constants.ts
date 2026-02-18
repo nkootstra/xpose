@@ -42,4 +42,10 @@ export const PROTOCOL = {
 
   /** How long a CLI session can be resumed after exit (seconds) */
   SESSION_RESUME_WINDOW_SECONDS: 600,
+
+  /** Default port for the local request inspection server */
+  INSPECT_PORT: 4194,
+
+  /** Max body size to capture for request inspection (32KB) */
+  INSPECT_MAX_BODY_CAPTURE: 32_768,
 } as const;

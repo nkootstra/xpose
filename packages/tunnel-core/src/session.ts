@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { PROTOCOL } from "@xpose/protocol";
+import { PROTOCOL, type TunnelConfig } from "@xpose/protocol";
 
 const SESSION_FILE_NAME = "session.json";
 
@@ -9,6 +9,8 @@ export interface TunnelEntry {
   subdomain: string;
   port: number;
   domain: string;
+  /** Optional tunnel access-control and response configuration. */
+  config?: TunnelConfig;
 }
 
 export interface Session {

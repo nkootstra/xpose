@@ -307,4 +307,178 @@ describe("createTunnelClient", () => {
     const sent = JSON.parse(ws.sendMock.mock.calls[0][0]);
     expect(sent.type).toBe("pong");
   });
+
+  // --- Inspect event tests ---
+
+  function authenticateAndClearMock(ws: any) {
+    ws.emit("open");
+    ws.emit(
+      "message",
+      JSON.stringify({
+        type: "auth-ack",
+        subdomain: "test-sub",
+        url: "https://test-sub.xpose.dev",
+        ttl: 3600,
+        remainingTtl: 3600,
+        sessionId: "sess-123",
+        maxBodySizeBytes: 5242880,
+      }),
+    );
+    ws.sendMock.mockClear();
+  }
+
+  it("emits inspect event on successful HTTP request", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("Hello World", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const client = createTunnelClient(defaultOpts);
+    const inspectHandler = vi.fn();
+    client.on("inspect", inspectHandler);
+
+    client.connect();
+    const ws = getCapturedWs()!;
+    authenticateAndClearMock(ws);
+
+    ws.emit(
+      "message",
+      JSON.stringify({
+        type: "http-request",
+        id: "req-inspect-1",
+        method: "POST",
+        path: "/api/data",
+        headers: {
+          host: "test-sub.xpose.dev",
+          "content-type": "application/json",
+        },
+        hasBody: false,
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(inspectHandler).toHaveBeenCalledTimes(1);
+    const entry = inspectHandler.mock.calls[0][0];
+    expect(entry.id).toBe("req-inspect-1");
+    expect(entry.method).toBe("POST");
+    expect(entry.path).toBe("/api/data");
+    expect(entry.status).toBe(200);
+    expect(entry.duration).toBeGreaterThanOrEqual(0);
+    expect(entry.timestamp).toBeGreaterThan(0);
+    expect(entry.requestHeaders).toHaveProperty("host");
+    expect(entry.responseHeaders).toHaveProperty("content-type");
+    // Response body should be base64 encoded "Hello World"
+    expect(entry.responseBody).toBe(
+      Buffer.from("Hello World").toString("base64"),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("emits inspect event with no request body when GET", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const client = createTunnelClient(defaultOpts);
+    const inspectHandler = vi.fn();
+    client.on("inspect", inspectHandler);
+
+    client.connect();
+    const ws = getCapturedWs()!;
+    authenticateAndClearMock(ws);
+
+    ws.emit(
+      "message",
+      JSON.stringify({
+        type: "http-request",
+        id: "req-inspect-2",
+        method: "GET",
+        path: "/",
+        headers: {},
+        hasBody: false,
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(inspectHandler).toHaveBeenCalledTimes(1);
+    const entry = inspectHandler.mock.calls[0][0];
+    expect(entry.requestBody).toBeUndefined();
+    expect(entry.responseBody).toBeUndefined(); // null body → no capture
+    expect(entry.status).toBe(204);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("emits inspect event with 502 status on connection refused", async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const client = createTunnelClient(defaultOpts);
+    const inspectHandler = vi.fn();
+    client.on("inspect", inspectHandler);
+
+    client.connect();
+    const ws = getCapturedWs()!;
+    authenticateAndClearMock(ws);
+
+    ws.emit(
+      "message",
+      JSON.stringify({
+        type: "http-request",
+        id: "req-inspect-3",
+        method: "GET",
+        path: "/fail",
+        headers: {},
+        hasBody: false,
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(inspectHandler).toHaveBeenCalledTimes(1);
+    const entry = inspectHandler.mock.calls[0][0];
+    expect(entry.id).toBe("req-inspect-3");
+    expect(entry.status).toBe(502);
+    expect(entry.responseBody).toBeUndefined();
+    expect(entry.responseHeaders).toEqual({});
+
+    vi.unstubAllGlobals();
+  });
+
+  it("includes config in auth message when provided", () => {
+    const config = {
+      cors: true,
+      allowedIps: ["1.2.3.4"],
+      rateLimit: 60,
+      customHeaders: { "X-Test": "value" },
+    };
+    const client = createTunnelClient({ ...defaultOpts, config });
+    client.connect();
+
+    const ws = getCapturedWs()!;
+    ws.emit("open");
+
+    const sentMessage = JSON.parse(ws.sendMock.mock.calls[0][0]);
+    expect(sentMessage.type).toBe("auth");
+    expect(sentMessage.config).toEqual(config);
+  });
+
+  it("omits config from auth message when not provided", () => {
+    const client = createTunnelClient(defaultOpts);
+    client.connect();
+
+    const ws = getCapturedWs()!;
+    ws.emit("open");
+
+    const sentMessage = JSON.parse(ws.sendMock.mock.calls[0][0]);
+    expect(sentMessage.type).toBe("auth");
+    expect(sentMessage.config).toBeUndefined();
+  });
 });

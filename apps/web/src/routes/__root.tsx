@@ -3,6 +3,7 @@ import {
   Outlet,
   Scripts,
   createRootRoute,
+  useRouterState,
 } from '@tanstack/react-router'
 import { MotionConfig } from 'motion/react'
 import appCss from '../styles.css?url'
@@ -49,6 +50,17 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isFullscreen = pathname.startsWith('/inspect')
+
+  if (isFullscreen) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <Outlet />
+      </MotionConfig>
+    )
+  }
+
   return (
     <MotionConfig reducedMotion="user">
       <div className="flex min-h-dvh flex-col">
@@ -61,5 +73,3 @@ function RootComponent() {
     </MotionConfig>
   )
 }
-
-

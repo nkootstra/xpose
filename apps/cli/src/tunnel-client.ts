@@ -6,11 +6,14 @@ import {
   encodeBinaryFrame,
   decodeBinaryFrame,
   type TunnelMessage,
+  type TunnelConfig,
   type HttpRequestMessage,
   type WsFrameMessage,
 } from "@xpose/protocol";
 import { WsRelayManager } from "./ws-relay.js";
 import type { TrafficEntry, TunnelStatus } from "@xpose/tunnel-core";
+
+const INSPECT_MAX_BODY = PROTOCOL.INSPECT_MAX_BODY_CAPTURE;
 
 interface BufferedBody {
   chunks: Uint8Array[];
@@ -23,6 +26,22 @@ export interface TunnelClientOptions {
   ttl: number;
   host: string;
   domain?: string;
+  /** Optional tunnel access-control and response configuration. */
+  config?: TunnelConfig;
+}
+
+/** Captured request/response data for the inspection dashboard. */
+export interface InspectEntry {
+  id: string;
+  method: string;
+  path: string;
+  status: number;
+  duration: number;
+  timestamp: number;
+  requestHeaders: Record<string, string>;
+  responseHeaders: Record<string, string>;
+  requestBody?: string; // base64-encoded, capped
+  responseBody?: string; // base64-encoded, capped
 }
 
 export interface TunnelClient {
@@ -39,6 +58,7 @@ export interface TunnelClient {
     }) => void,
   ): void;
   on(event: "traffic", listener: (entry: TrafficEntry) => void): void;
+  on(event: "inspect", listener: (entry: InspectEntry) => void): void;
   on(event: "error", listener: (err: Error) => void): void;
   on(event: "expired", listener: () => void): void;
 }
@@ -186,6 +206,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         subdomain: opts.subdomain,
         ttl: opts.ttl,
         sessionId: sessionId ?? undefined,
+        config: opts.config,
       } satisfies TunnelMessage);
     });
 
@@ -333,6 +354,39 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
     }
   }
 
+  /** Capture up to INSPECT_MAX_BODY bytes of a body as a base64 string. */
+  function captureBodyForInspect(body: Uint8Array | null): string | undefined {
+    if (!body || body.byteLength === 0) return undefined;
+    const slice =
+      body.byteLength <= INSPECT_MAX_BODY
+        ? body
+        : body.slice(0, INSPECT_MAX_BODY);
+    return Buffer.from(slice).toString("base64");
+  }
+
+  /** Emit an inspect event with captured request/response data. */
+  function emitInspect(
+    msg: HttpRequestMessage,
+    body: Uint8Array | null,
+    status: number,
+    responseHeaders: Record<string, string>,
+    responseBody: Uint8Array | null,
+    duration: number,
+  ): void {
+    emitter.emit("inspect", {
+      id: msg.id,
+      method: msg.method,
+      path: msg.path,
+      status,
+      duration,
+      timestamp: Date.now(),
+      requestHeaders: msg.headers,
+      responseHeaders,
+      requestBody: captureBodyForInspect(body),
+      responseBody: captureBodyForInspect(responseBody),
+    } satisfies InspectEntry);
+  }
+
   async function handleHttpRequest(
     msg: HttpRequestMessage,
     body: Uint8Array | null,
@@ -369,6 +423,7 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         headerValue(responseHeaders, "content-length"),
       );
       if (contentLength !== null && contentLength > maxBodySizeBytes) {
+        const duration = Date.now() - startTime;
         respondWith413(
           msg.id,
           `Response body exceeds ${maxBodySizeBytes} byte limit`,
@@ -378,14 +433,16 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           method: msg.method,
           path: msg.path,
           status: 413,
-          duration: Date.now() - startTime,
+          duration,
           timestamp: new Date(),
         } satisfies TrafficEntry);
+        emitInspect(msg, body, 413, responseHeaders, null, duration);
         return;
       }
 
       const bufferedResponse = await readBodyWithinLimit(response.body);
       if (!bufferedResponse) {
+        const duration = Date.now() - startTime;
         respondWith413(
           msg.id,
           `Response body exceeds ${maxBodySizeBytes} byte limit`,
@@ -395,9 +452,10 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
           method: msg.method,
           path: msg.path,
           status: 413,
-          duration: Date.now() - startTime,
+          duration,
           timestamp: new Date(),
         } satisfies TrafficEntry);
+        emitInspect(msg, body, 413, {}, null, duration);
         return;
       }
 
@@ -434,14 +492,28 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         id: msg.id,
       } satisfies TunnelMessage);
 
+      const duration = Date.now() - startTime;
+      const responseBodyConcat = hasBody
+        ? concatChunks(bufferedResponse.chunks)
+        : null;
+
       emitter.emit("traffic", {
         id: msg.id,
         method: msg.method,
         path: msg.path,
         status: response.status,
-        duration: Date.now() - startTime,
+        duration,
         timestamp: new Date(),
       } satisfies TrafficEntry);
+
+      emitInspect(
+        msg,
+        body,
+        response.status,
+        responseHeaders,
+        responseBodyConcat,
+        duration,
+      );
     } catch (err) {
       const errMessage = (err as Error).message;
       const isConnectionRefused =
@@ -457,14 +529,17 @@ export function createTunnelClient(opts: TunnelClientOptions): TunnelClient {
         status: 502,
       } satisfies TunnelMessage);
 
+      const duration = Date.now() - startTime;
       emitter.emit("traffic", {
         id: msg.id,
         method: msg.method,
         path: msg.path,
         status: 502,
-        duration: Date.now() - startTime,
+        duration,
         timestamp: new Date(),
       } satisfies TrafficEntry);
+
+      emitInspect(msg, body, 502, {}, null, duration);
     }
   }
 

@@ -23,6 +23,7 @@ interface TunnelState {
 interface AppProps {
   clients: TunnelClient[];
   ports: number[];
+  inspectUrl?: string;
   onQuit: () => void;
 }
 
@@ -60,9 +61,11 @@ function openBrowser(url: string): void {
 function TunnelCard({
   tunnel,
   showPortPrefix,
+  inspectUrl,
 }: {
   tunnel: TunnelState;
   showPortPrefix: boolean;
+  inspectUrl?: string;
 }) {
   const portLabel = showPortPrefix ? ` :${tunnel.port}` : "";
 
@@ -88,6 +91,15 @@ function TunnelCard({
           <Text dimColor>
             {"  "}Forwarding to localhost:{tunnel.port}
           </Text>
+          {inspectUrl && (
+            <Text>
+              <Text color="magenta" bold>
+                {"  "}
+              </Text>
+              <Text dimColor>Inspect: </Text>
+              <Text color="magenta">{inspectUrl}</Text>
+            </Text>
+          )}
           <Text>
             {"  "}TTL:{" "}
             <Text color="yellow">{formatTtl(tunnel.ttlRemaining)}</Text>
@@ -257,7 +269,7 @@ function Panel({
 
 // --- Main App Component ---
 
-export function App({ clients, ports, onQuit }: AppProps) {
+export function App({ clients, ports, inspectUrl, onQuit }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
 
@@ -425,6 +437,11 @@ export function App({ clients, ports, onQuit }: AppProps) {
         return;
       }
 
+      if (input === "i" && inspectUrl) {
+        openBrowser(inspectUrl);
+        return;
+      }
+
       if (key.tab && showSplit) {
         setFocusedPanel((prev) => (prev === "left" ? "right" : "left"));
         return;
@@ -474,6 +491,9 @@ export function App({ clients, ports, onQuit }: AppProps) {
 
   // Build footer
   const footerParts = ["q quit", "b open browser"];
+  if (inspectUrl) {
+    footerParts.push("i inspect");
+  }
   if (showSplit) {
     footerParts.push("tab switch panel");
   }
@@ -494,7 +514,11 @@ export function App({ clients, ports, onQuit }: AppProps) {
           {tunnels.map((tunnel, i) => (
             <Box key={i} flexDirection="column">
               {i > 0 && <Text>{""}</Text>}
-              <TunnelCard tunnel={tunnel} showPortPrefix={tunnels.length > 1} />
+              <TunnelCard
+                tunnel={tunnel}
+                showPortPrefix={tunnels.length > 1}
+                inspectUrl={inspectUrl}
+              />
             </Box>
           ))}
         </Box>
@@ -534,6 +558,7 @@ export function App({ clients, ports, onQuit }: AppProps) {
                 <TunnelCard
                   tunnel={tunnel}
                   showPortPrefix={tunnels.length > 1}
+                  inspectUrl={inspectUrl}
                 />
               </Box>
             ))}

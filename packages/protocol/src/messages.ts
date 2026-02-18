@@ -1,10 +1,24 @@
 // ---- Text frame messages (sent as JSON strings over WebSocket) ----
 
+/** Tunnel configuration sent from CLI to server during auth. */
+export interface TunnelConfig {
+  /** IP addresses or CIDR ranges allowed to access the tunnel. */
+  allowedIps?: string[];
+  /** Max requests per minute per source IP (0 = unlimited). */
+  rateLimit?: number;
+  /** Enable permissive CORS headers on all responses. */
+  cors?: boolean;
+  /** Custom response headers to inject. */
+  customHeaders?: Record<string, string>;
+}
+
 export interface AuthMessage {
   type: "auth";
   subdomain: string;
   ttl?: number;
   sessionId?: string;
+  /** Optional tunnel access-control and response configuration. */
+  config?: TunnelConfig;
 }
 
 export interface AuthAckMessage {
@@ -16,6 +30,8 @@ export interface AuthAckMessage {
   remainingTtl: number;
   sessionId: string;
   maxBodySizeBytes: number;
+  /** Echoed-back tunnel config accepted by the server. */
+  config?: TunnelConfig;
 }
 
 export interface HttpRequestMessage {

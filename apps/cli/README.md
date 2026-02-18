@@ -74,18 +74,73 @@ After quitting, you can resume the same tunnel URLs within 10 minutes:
 npx xpose-dev -r
 ```
 
+### IP allowlisting
+
+```sh
+npx xpose-dev 3000 --allow-ips 203.0.113.10,198.51.100.0/24
+```
+
+### Rate limiting
+
+```sh
+npx xpose-dev 3000 --rate-limit 60
+```
+
+### CORS & custom headers
+
+```sh
+npx xpose-dev 3000 --cors
+npx xpose-dev 3000 --header "X-Custom: value"
+```
+
+### Request inspection
+
+```sh
+npx xpose-dev 3000 --inspect
+```
+
+Opens a dashboard at `https://local.xpose.dev?port=4194`. Press `i` in the TUI to open it.
+
+### Config file
+
+Create `xpose.config.ts` in your project root:
+
+```typescript
+import { defineConfig } from "@xpose/tunnel-core";
+
+export default defineConfig({
+  tunnels: [{ port: 3000, subdomain: "my-app", cors: true }],
+});
+```
+
+Then run without arguments:
+
+```sh
+npx xpose-dev
+```
+
+Use `--no-config` to skip loading the config file.
+
 ## Options
 
-| Flag             | Description                      | Default      |
-| ---------------- | -------------------------------- | ------------ |
-| `-r`, `--resume` | Resume the previous session      | `false`      |
-| `--from-turbo`   | Auto-detect ports from Turborepo | `false`      |
-| `--turbo-task`   | Turborepo task to inspect        | `dev`        |
-| `--turbo-filter` | Turborepo filter                 | -            |
-| `--turbo-path`   | Path to Turborepo root           | `.`          |
-| `--ttl`          | Tunnel TTL in seconds            | `14400` (4h) |
-| `--subdomain`    | Custom subdomain prefix          | random       |
-| `--domain`       | Public tunnel domain             | `xpose.dev`  |
+| Flag             | Description                                      | Default      |
+| ---------------- | ------------------------------------------------ | ------------ |
+| `-r`, `--resume` | Resume the previous session                      | `false`      |
+| `--from-turbo`   | Auto-detect ports from Turborepo                 | `false`      |
+| `--turbo-task`   | Turborepo task to inspect                        | `dev`        |
+| `--turbo-filter` | Turborepo filter                                 | -            |
+| `--turbo-path`   | Path to Turborepo root                           | `.`          |
+| `--ttl`          | Tunnel TTL in seconds                            | `14400` (4h) |
+| `--subdomain`    | Custom subdomain prefix                          | random       |
+| `--domain`       | Public tunnel domain                             | `xpose.dev`  |
+| `--allow-ips`    | Comma-separated IPs/CIDRs to allow               | -            |
+| `--rate-limit`   | Max requests per minute per IP                   | -            |
+| `--cors`         | Enable permissive CORS headers                   | `false`      |
+| `--header`       | Custom response header (`key:value`), repeatable | -            |
+| `--inspect`      | Start the request inspection server              | `false`      |
+| `--inspect-port` | Port for the inspection server                   | `4194`       |
+| `--config`       | Path to config file                              | auto-detect  |
+| `--no-config`    | Skip loading the config file                     | `false`      |
 
 ## Features
 
@@ -95,6 +150,11 @@ npx xpose-dev -r
 - Auto-reconnection with exponential backoff
 - Session resume (`-r`) to keep the same URLs after restart
 - Custom subdomains
+- IP allowlisting with CIDR support
+- Per-IP rate limiting
+- CORS headers and custom response headers
+- Real-time request inspection dashboard
+- Config file support (`xpose.config.ts`)
 - No sign-up required
 
 ## How it works

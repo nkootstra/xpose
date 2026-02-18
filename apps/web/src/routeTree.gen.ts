@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as InspectRouteImport } from './routes/inspect'
 import { Route as DocsRouteRouteImport } from './routes/docs/route'
 import { Route as DashboardRouteRouteImport } from './routes/dashboard/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -19,6 +20,11 @@ import { Route as DocsInstallationRouteImport } from './routes/docs/installation
 import { Route as DocsHowItWorksRouteImport } from './routes/docs/how-it-works'
 import { Route as DocsConfigurationRouteImport } from './routes/docs/configuration'
 
+const InspectRoute = InspectRouteImport.update({
+  id: '/inspect',
+  path: '/inspect',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsRouteRoute = DocsRouteRouteImport.update({
   id: '/docs',
   path: '/docs',
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteRouteWithChildren
   '/docs': typeof DocsRouteRouteWithChildren
+  '/inspect': typeof InspectRoute
   '/docs/configuration': typeof DocsConfigurationRoute
   '/docs/how-it-works': typeof DocsHowItWorksRoute
   '/docs/installation': typeof DocsInstallationRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/inspect': typeof InspectRoute
   '/docs/configuration': typeof DocsConfigurationRoute
   '/docs/how-it-works': typeof DocsHowItWorksRoute
   '/docs/installation': typeof DocsInstallationRoute
@@ -90,6 +98,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRouteRouteWithChildren
   '/docs': typeof DocsRouteRouteWithChildren
+  '/inspect': typeof InspectRoute
   '/docs/configuration': typeof DocsConfigurationRoute
   '/docs/how-it-works': typeof DocsHowItWorksRoute
   '/docs/installation': typeof DocsInstallationRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/docs'
+    | '/inspect'
     | '/docs/configuration'
     | '/docs/how-it-works'
     | '/docs/installation'
@@ -112,6 +122,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/inspect'
     | '/docs/configuration'
     | '/docs/how-it-works'
     | '/docs/installation'
@@ -123,6 +134,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/docs'
+    | '/inspect'
     | '/docs/configuration'
     | '/docs/how-it-works'
     | '/docs/installation'
@@ -135,10 +147,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRouteRoute: typeof DashboardRouteRouteWithChildren
   DocsRouteRoute: typeof DocsRouteRouteWithChildren
+  InspectRoute: typeof InspectRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/inspect': {
+      id: '/inspect'
+      path: '/inspect'
+      fullPath: '/inspect'
+      preLoaderRoute: typeof InspectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs': {
       id: '/docs'
       path: '/docs'
@@ -241,6 +261,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRouteRoute: DashboardRouteRouteWithChildren,
   DocsRouteRoute: DocsRouteRouteWithChildren,
+  InspectRoute: InspectRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

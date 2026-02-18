@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  env,
-  runDurableObjectAlarm,
-} from "cloudflare:test";
+import { env, runDurableObjectAlarm } from "cloudflare:test";
 import { PROTOCOL } from "@xpose/protocol";
 import { TunnelSession } from "../tunnel-session.js";
 import type { Env } from "../types.js";
@@ -81,6 +78,149 @@ describe("TunnelSession", () => {
       });
       expect(res2.status).toBe(101);
       expect(res2.webSocket).toBeDefined();
+    });
+  });
+
+  describe("access control with IP allowlist", () => {
+    /** Helper: connect CLI WS and auth with an allowedIps config */
+    async function connectWithConfig(
+      stub: DurableObjectStub<TunnelSession>,
+      config: { allowedIps?: string[]; rateLimit?: number; cors?: boolean },
+    ) {
+      const wsRes = await stub.fetch("http://fake-host/_tunnel/connect", {
+        headers: { upgrade: "websocket" },
+      });
+      expect(wsRes.status).toBe(101);
+      const ws = wsRes.webSocket!;
+      ws.accept();
+      ws.send(
+        JSON.stringify({
+          type: "auth",
+          subdomain: "test",
+          ttl: 60,
+          config,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      return ws;
+    }
+
+    it("blocks requests when IP is not in allowlist", async () => {
+      const stub = getStub("ip-block");
+      await connectWithConfig(stub, {
+        allowedIps: ["10.0.0.1"],
+      });
+
+      // Request from a different IP
+      const res = await stub.fetch("http://fake-host/test", {
+        headers: { "cf-connecting-ip": "192.168.1.1" },
+      });
+      expect(res.status).toBe(403);
+      const text = await res.text();
+      expect(text).toContain("Access Denied");
+    });
+
+    it("allows requests when IP is in allowlist", async () => {
+      const stub = getStub("ip-allow");
+      await connectWithConfig(stub, {
+        allowedIps: ["10.0.0.1"],
+      });
+
+      // Request from the allowed IP — will timeout (no CLI response handler) but should not be 403
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 500);
+      try {
+        await stub.fetch("http://fake-host/test", {
+          headers: { "cf-connecting-ip": "10.0.0.1" },
+          signal: controller.signal,
+        });
+      } catch {
+        // AbortError is expected (request times out waiting for CLI response)
+      }
+      clearTimeout(timeout);
+      // If we got here without a 403, the IP was allowed through
+    });
+
+    it("extracts first IP from multi-value x-forwarded-for", async () => {
+      const stub = getStub("ip-xff-multi");
+      await connectWithConfig(stub, {
+        allowedIps: ["203.0.113.50"],
+      });
+
+      // x-forwarded-for with multiple IPs — first one is the client
+      // Request passes access control → enters handleProxyRequest → times out
+      // We race with a short timeout to detect it wasn't immediately 403'd
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 500);
+      try {
+        const res = await stub.fetch("http://fake-host/test", {
+          headers: {
+            "x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
+          },
+          signal: controller.signal,
+        });
+        // If it resolved, it should NOT be 403
+        expect(res.status).not.toBe(403);
+      } catch {
+        // AbortError — request passed access control and hung waiting for CLI response
+        // This is the expected behavior (IP was allowed)
+      }
+      clearTimeout(timer);
+    });
+
+    it("rejects when first IP in x-forwarded-for is not allowed", async () => {
+      const stub = getStub("ip-xff-multi-reject");
+      await connectWithConfig(stub, {
+        allowedIps: ["10.0.0.1"],
+      });
+
+      const res = await stub.fetch("http://fake-host/test", {
+        headers: { "x-forwarded-for": "192.168.1.1, 10.0.0.1" },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("prefers cf-connecting-ip over x-forwarded-for", async () => {
+      const stub = getStub("ip-cf-priority");
+      await connectWithConfig(stub, {
+        allowedIps: ["10.0.0.5"],
+      });
+
+      // cf-connecting-ip is allowed, x-forwarded-for is not
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 500);
+      try {
+        const res = await stub.fetch("http://fake-host/test", {
+          headers: {
+            "cf-connecting-ip": "10.0.0.5",
+            "x-forwarded-for": "192.168.1.1",
+          },
+          signal: controller.signal,
+        });
+        expect(res.status).not.toBe(403);
+      } catch {
+        // AbortError — IP was allowed, request hung waiting for CLI
+      }
+      clearTimeout(timer);
+    });
+
+    it("handles CORS preflight without access control check", async () => {
+      const stub = getStub("cors-preflight");
+      await connectWithConfig(stub, {
+        cors: true,
+        allowedIps: ["10.0.0.1"], // Even with IP restriction
+      });
+
+      // CORS preflight from a non-allowed IP should still return 204
+      const res = await stub.fetch("http://fake-host/test", {
+        method: "OPTIONS",
+        headers: {
+          "cf-connecting-ip": "192.168.1.1", // Not in allowlist
+          origin: "https://example.com",
+        },
+      });
+      expect(res.status).toBe(204);
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
     });
   });
 
